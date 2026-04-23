@@ -19,3 +19,4 @@ test-results/
 *.tsbuildinfo
 .sf/
 .sfdx/
+.claude/scheduled_tasks.lock
