@@ -1,21 +1,20 @@
-/**
- * ohanafy-plan-mcp-memory
- * Track B skeleton — scenario memory:
- *   - record_decision(scenario_id, note)
- *   - list_decisions(scenario_id)
- *   - compare_scenarios(a, b)
- */
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createServer, SERVER_INFO } from "./server.js";
 
-export const server = {
-  name: "ohanafy-plan-mcp-memory",
-  version: "0.0.0",
-  tools: ["record_decision", "list_decisions", "compare_scenarios"] as const,
-};
+export { SERVER_INFO };
+export { TOOL_REGISTRY } from "./tools.js";
+export * from "./logic.js";
+export { MemoryStore, sharedStore } from "./store.js";
 
-export function describeServer() {
-  return {
-    name: server.name,
-    version: server.version,
-    tools: server.tools,
-  };
+async function main() {
+  const server = createServer();
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 }

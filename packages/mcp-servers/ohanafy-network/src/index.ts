@@ -1,22 +1,19 @@
-/**
- * ohanafy-plan-mcp-network
- * Track B skeleton — cross-wholesaler anonymized signals (DynamoDB-backed).
- *   - query_peer_signals(segment, window)
- *   - get_category_trend(sku_family, window)
- *
- * Anonymization + minimum-bucket-size guardrails live here (not in the caller).
- */
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createServer, SERVER_INFO } from "./server.js";
 
-export const server = {
-  name: "ohanafy-plan-mcp-network",
-  version: "0.0.0",
-  tools: ["query_peer_signals", "get_category_trend"] as const,
-};
+export { SERVER_INFO };
+export { TOOL_REGISTRY } from "./tools.js";
+export * from "./logic.js";
 
-export function describeServer() {
-  return {
-    name: server.name,
-    version: server.version,
-    tools: server.tools,
-  };
+async function main() {
+  const server = createServer();
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 }
