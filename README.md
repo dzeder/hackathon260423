@@ -87,6 +87,30 @@ Additional workflows:
 
 **Absent secret = green CI, skipped feature.** Nothing in CI should *fail* because a secret is missing.
 
+### Secret isolation (required for public repos)
+
+This repo is public, so treat every secret as one misconfigured workflow away from the internet.
+
+Create a GitHub **Environment** called `hackathon-deploy` (Settings → Environments → New environment) and put the **high-blast-radius** secrets there, not at the repo level:
+
+| Secret | Where to put it | Reason |
+|---|---|---|
+| `SF_AUTH_URL` | Environment `hackathon-deploy` | Deploy access to the real Ohanafy sandbox |
+| `SF_USERNAME` | Environment `hackathon-deploy` | Pairs with `SF_AUTH_URL` |
+| `ANTHROPIC_API_KEY` | Repo secret (fork PRs already guarded) | Bill attached to a credit card |
+| `SLACK_WEBHOOK_URL` | Repo secret | Low blast radius (channel spam) |
+| `DD_API_KEY` | Repo secret | Event-post only, no read access |
+
+On the `hackathon-deploy` environment, set **Deployment branch rules → Selected branches**: `main`, `dzeder/*`, `track-*`. That prevents a fork PR or random branch from accessing the SF auth URL even if a future workflow change tries to.
+
+Optional but recommended: add **required reviewers** on `hackathon-deploy` so deploys pause for human approval.
+
+### Shell-injection posture
+
+Every workflow binds user-controlled values (commit messages, PR titles, branch names, actor logins) to `env:` vars, never directly into `run:` scripts via `${{ }}`. JSON payloads are built with `jq`, not string concatenation. Do NOT "simplify" this back to inline `${{ github.event.* }}` in shell — it's a well-known RCE path on public repos.
+
+`pr-claude-review.yml` uses `pull_request` (not `pull_request_target`) and rejects fork PRs via a `head.repo.full_name == github.repository` guard. See the header comment in that file before changing either.
+
 ### Required branch protection on `main`
 
 Set in GitHub repo settings → Branches → `main`:

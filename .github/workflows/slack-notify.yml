@@ -1,9 +1,19 @@
+# Slack Notify
+#
+# SECURITY — fields like commit messages, PR titles, branch names, and actor
+# login are user-controlled. They are NOT interpolated via ${{ }} into shell
+# scripts (that pattern is vulnerable to shell injection). Instead, they are
+# bound to env vars and referenced via standard $VAR expansion, which the
+# shell quotes safely.
 name: Slack Notify
 on:
   push:
     branches: ['track-*']
   pull_request:
     types: [opened, closed, ready_for_review]
+
+permissions:
+  contents: read
 
 jobs:
   notify:
@@ -21,30 +31,37 @@ jobs:
       - name: Build message
         if: steps.check.outputs.skip == 'false'
         id: msg
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          PR_ACTION: ${{ github.event.action }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
-          case "${{ github.event_name }}" in
+          case "$EVENT_NAME" in
             push)
-              TEXT="🔵 [${{ github.ref_name }}] @${{ github.actor }} pushed: ${{ github.event.head_commit.message }}"
+              TEXT="[${REF_NAME}] @${ACTOR} pushed: ${COMMIT_MSG}"
               ;;
             pull_request)
-              ACTION="${{ github.event.action }}"
-              PR_TITLE="${{ github.event.pull_request.title }}"
-              PR_URL="${{ github.event.pull_request.html_url }}"
-              case "$ACTION" in
-                opened) TEXT="🟡 PR opened: <${PR_URL}|${PR_TITLE}>" ;;
-                closed) TEXT="🟢 PR closed: <${PR_URL}|${PR_TITLE}>" ;;
-                ready_for_review) TEXT="👀 PR ready for review: <${PR_URL}|${PR_TITLE}>" ;;
-                *) TEXT="PR event: $ACTION — <${PR_URL}|${PR_TITLE}>" ;;
+              case "$PR_ACTION" in
+                opened)            TEXT="PR opened: <${PR_URL}|${PR_TITLE}>" ;;
+                closed)            TEXT="PR closed: <${PR_URL}|${PR_TITLE}>" ;;
+                ready_for_review)  TEXT="PR ready for review: <${PR_URL}|${PR_TITLE}>" ;;
+                *)                 TEXT="PR event: ${PR_ACTION} — <${PR_URL}|${PR_TITLE}>" ;;
               esac
               ;;
-            *) TEXT="Event: ${{ github.event_name }}" ;;
+            *) TEXT="Event: ${EVENT_NAME}" ;;
           esac
-          # escape quotes for JSON
-          TEXT_ESCAPED=$(echo "$TEXT" | sed 's/"/\\"/g')
-          echo "text=$TEXT_ESCAPED" >> "$GITHUB_OUTPUT"
+          # Use jq for safe JSON encoding (handles quotes, newlines, unicode)
+          echo "payload=$(jq -cn --arg t "$TEXT" '{text:$t}')" >> "$GITHUB_OUTPUT"
       - name: Post to Slack
         if: steps.check.outputs.skip == 'false'
+        env:
+          WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          PAYLOAD: ${{ steps.msg.outputs.payload }}
         run: |
           curl -s -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"${{ steps.msg.outputs.text }}\"}" \
-            "${{ secrets.SLACK_WEBHOOK_URL }}" || true
+            --data "$PAYLOAD" \
+            "$WEBHOOK" || true

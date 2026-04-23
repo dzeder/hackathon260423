@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -91,6 +94,10 @@ jobs:
   apex-tests:
     name: Apex tests
     runs-on: ubuntu-latest
+    # SECURITY — SF_AUTH_URL grants deploy access to the sandbox org.
+    # The `hackathon-deploy` GitHub Environment gates this job with
+    # branch protection + (optionally) required reviewer. See README §Secrets.
+    environment: hackathon-deploy
     needs: lint-and-types
     if: |
       github.event_name == 'pull_request' &&
@@ -118,10 +125,13 @@ jobs:
         run: npm install -g @salesforce/cli
       - name: Auth to sandbox
         if: steps.should_run.outputs.skip == 'false'
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
-          echo "${{ secrets.SF_AUTH_URL }}" > sfdx_auth.txt
+          printf '%s' "$SF_AUTH_URL" > sfdx_auth.txt
           sf org login sfdx-url --sfdx-url-file sfdx_auth.txt \
             --alias ohanafy-hack-sandbox --set-default
+          rm -f sfdx_auth.txt
       - name: Run Apex tests
         if: steps.should_run.outputs.skip == 'false'
         run: |
@@ -139,17 +149,21 @@ jobs:
       - name: Post CI outcome to Datadog
         env:
           DD_API_KEY: ${{ secrets.DD_API_KEY }}
+          JOB_STATUS: ${{ job.status }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           if [ -z "$DD_API_KEY" ]; then
             echo "DD_API_KEY missing — skipping Datadog event (not a CI failure)."
             exit 0
           fi
-          STATUS="${{ job.status }}"
+          TITLE="CI ${JOB_STATUS} — PR #${PR_NUMBER:-push}"
+          PAYLOAD=$(jq -cn \
+            --arg title "$TITLE" \
+            --arg text "Branch: ${BRANCH}" \
+            --arg status "$JOB_STATUS" \
+            '{title:$title, text:$text, tags:["service:ohanafy-plan-ci","env:hackathon",("status:"+$status)]}')
           curl -s -X POST "https://api.datadoghq.com/api/v1/events" \
             -H "DD-API-KEY: $DD_API_KEY" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"title\": \"CI $STATUS — PR #${{ github.event.pull_request.number || 'push' }}\",
-              \"text\": \"Branch: ${{ github.head_ref || github.ref_name }}\",
-              \"tags\": [\"service:ohanafy-plan-ci\", \"env:hackathon\", \"status:$STATUS\"]
-            }" || true
+            -d "$PAYLOAD" || true

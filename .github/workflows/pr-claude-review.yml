@@ -1,11 +1,29 @@
+# Claude PR Review
+#
+# SECURITY — DO NOT change the trigger to `pull_request_target`.
+# `pull_request_target` runs in the context of the base repo *with secrets*
+# and checks out the PR head by default. That combination is a well-known
+# exfiltration pattern: a fork PR can modify any file checked out by CI
+# (workflow scripts, config, lockfiles) and steal ANTHROPIC_API_KEY.
+#
+# This workflow stays on `pull_request` and additionally refuses fork PRs
+# via the `head.repo.full_name == github.repository` guard so the secret
+# is never exposed to untrusted code. External contributor PRs silently
+# skip the Claude review step — that is intentional.
 name: Claude PR Review
 on:
   pull_request:
     types: [opened, synchronize]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   review:
     runs-on: ubuntu-latest
+    # Hard fork-PR guard. Secrets would be empty anyway on `pull_request`
+    # from a fork, but this makes intent explicit and short-circuits early.
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4
@@ -34,8 +52,10 @@ jobs:
       - name: Compute diff
         if: steps.check.outputs.skip == 'false'
         id: diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          DIFF=$(git diff origin/${{ github.base_ref }}...HEAD -- . ':(exclude)references' ':(exclude)*.lock' ':(exclude).context')
+          DIFF=$(git diff "origin/${BASE_REF}...HEAD" -- . ':(exclude)references' ':(exclude)*.lock' ':(exclude).context')
           # truncate extra-long diffs to keep API call cheap
           echo "$DIFF" | head -c 60000 > /tmp/pr.diff
           echo "path=/tmp/pr.diff" >> "$GITHUB_OUTPUT"
@@ -44,11 +64,14 @@ jobs:
         if: steps.check.outputs.skip == 'false'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DIFF_PATH: ${{ steps.diff.outputs.path }}
         run: |
           python3 .github/scripts/claude_pr_review.py \
-            --diff-file "${{ steps.diff.outputs.path }}" \
-            --pr-number "${{ github.event.pull_request.number }}" \
-            --track "${{ github.head_ref }}" \
+            --diff-file "$DIFF_PATH" \
+            --pr-number "$PR_NUMBER" \
+            --track "$HEAD_REF" \
             > review.md
 
       - name: Post comment

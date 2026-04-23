@@ -34,27 +34,33 @@ jobs:
         if: steps.check.outputs.skip == 'false'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CHECKPOINT_TIME: ${{ inputs.time }}
         run: |
-          python3 .github/scripts/checkpoint.py --time=${{ inputs.time }} > checkpoint-${{ inputs.time }}.md
+          python3 .github/scripts/checkpoint.py --time="$CHECKPOINT_TIME" > "checkpoint-${CHECKPOINT_TIME}.md"
       - name: Post to Slack
         if: steps.check.outputs.skip == 'false'
         env:
           WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CHECKPOINT_TIME: ${{ inputs.time }}
         run: |
           if [ -z "$WEBHOOK" ]; then
             echo "SLACK_WEBHOOK_URL missing — skipping post."
             exit 0
           fi
-          MSG=$(cat checkpoint-${{ inputs.time }}.md | head -c 1500 | sed 's/"/\\"/g')
+          MSG=$(head -c 1500 "checkpoint-${CHECKPOINT_TIME}.md")
+          HEADER="@captain ${CHECKPOINT_TIME} CHECKPOINT:"
+          PAYLOAD=$(jq -cn --arg header "$HEADER" --arg msg "$MSG" '{text: ($header + "\n" + $msg)}')
           curl -s -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"@captain ${{ inputs.time }} CHECKPOINT:\n$MSG\"}" \
+            --data "$PAYLOAD" \
             "$WEBHOOK" || true
       - name: Gate merges until ack
         if: steps.check.outputs.skip == 'false'
+        env:
+          CHECKPOINT_TIME: ${{ inputs.time }}
         run: |
           git config user.name "checkpoint-bot"
           git config user.email "checkpoint@ohanafy.local"
-          touch .checkpoint-${{ inputs.time }}-pending
-          git add .checkpoint-${{ inputs.time }}-pending
-          git diff --staged --quiet || git commit -m "gate: ${{ inputs.time }} checkpoint pending"
+          touch ".checkpoint-${CHECKPOINT_TIME}-pending"
+          git add ".checkpoint-${CHECKPOINT_TIME}-pending"
+          git diff --staged --quiet || git commit -m "gate: ${CHECKPOINT_TIME} checkpoint pending"
           git push || true
