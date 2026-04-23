@@ -1,24 +1,19 @@
-/**
- * ohanafy-plan-mcp-forecast
- * Track B skeleton — implements the forecast mutation tools:
- *   - apply_event(scenario_id, event)
- *   - run_three_statement(scenario_id)
- *   - snapshot(scenario_id)
- *
- * The real server wires stdio transport + Zod-validated tool schemas.
- * This file exists so CI + import graph stay green on day one.
- */
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createServer, SERVER_INFO } from "./server.js";
 
-export const server = {
-  name: "ohanafy-plan-mcp-forecast",
-  version: "0.0.0",
-  tools: ["apply_event", "run_three_statement", "snapshot"] as const,
-};
+export { SERVER_INFO };
+export { TOOL_REGISTRY } from "./tools.js";
+export * from "./logic.js";
 
-export function describeServer() {
-  return {
-    name: server.name,
-    version: server.version,
-    tools: server.tools,
-  };
+async function main() {
+  const server = createServer();
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 }

@@ -1,0 +1,22 @@
+{
+  "packageDirectories": [
+    {
+      "path": "force-app/main/default",
+      "package": "ohanafy-plan",
+      "versionNumber": "0.1.0.NEXT",
+      "default": true,
+      "dependencies": [
+        {
+          "package": "ohfy@0.0.0-LATEST"
+        }
+      ]
+    }
+  ],
+  "namespace": "",
+  "sfdcLoginUrl": "https://login.salesforce.com",
+  "sourceApiVersion": "60.0",
+  "packageAliases": {
+    "ohanafy-plan": "0Ho000000000000AAA",
+    "ohfy@0.0.0-LATEST": "0Ho000000000000BBB"
+  }
+}

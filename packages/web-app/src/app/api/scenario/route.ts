@@ -2,44 +2,41 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { baselineForecast } from "@/data/baseline";
 import { applyEvents } from "@/lib/applyEvents";
-import { respond } from "@/lib/copilot";
 import { eventsCatalog } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
 
 export const runtime = "nodejs";
 
-const Body = z.object({
-  prompt: z.string().min(1).max(2000),
-  scenarioId: z.string().min(1),
+const Query = z.object({
   appliedEventIds: z.array(z.string()).default([]),
 });
 
 export async function POST(req: Request) {
-  let parsed: z.infer<typeof Body>;
+  let parsed: z.infer<typeof Query>;
   try {
-    const raw = await req.json();
-    parsed = Body.parse(raw);
+    parsed = Query.parse(await req.json());
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "invalid body" },
       { status: 400 },
     );
   }
-
   const appliedEvents = eventsCatalog.filter((e) =>
     parsed.appliedEventIds.includes(e.id),
   );
   const scenario = applyEvents(baselineForecast, appliedEvents);
   const threeStatement = runThreeStatement(scenario);
-
-  const response = respond({
-    prompt: parsed.prompt,
-    scenarioId: parsed.scenarioId,
-    appliedEventIds: parsed.appliedEventIds,
+  return NextResponse.json({
     baseline: baselineForecast,
     scenario,
     threeStatement,
+    eventCount: appliedEvents.length,
   });
+}
 
-  return NextResponse.json(response);
+export async function GET() {
+  return NextResponse.json({
+    baseline: baselineForecast,
+    catalog: eventsCatalog,
+  });
 }
