@@ -3,6 +3,7 @@ import { z } from "zod";
 import { baselineForecast } from "@/data/baseline";
 import { applyEvents } from "@/lib/applyEvents";
 import { respond } from "@/lib/copilot";
+import { respondLive } from "@/lib/copilotLive";
 import { eventsCatalog } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
 
@@ -32,14 +33,26 @@ export async function POST(req: Request) {
   const scenario = applyEvents(baselineForecast, appliedEvents);
   const threeStatement = runThreeStatement(scenario);
 
-  const response = respond({
+  const query = {
     prompt: parsed.prompt,
     scenarioId: parsed.scenarioId,
     appliedEventIds: parsed.appliedEventIds,
     baseline: baselineForecast,
     scenario,
     threeStatement,
-  });
+  };
 
-  return NextResponse.json(response);
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      const live = await respondLive(query);
+      return NextResponse.json({ ...live, source: "live" });
+    } catch (err) {
+      console.warn(
+        "copilot: live call failed, falling back to canned",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return NextResponse.json({ ...respond(query), source: "canned" });
 }
