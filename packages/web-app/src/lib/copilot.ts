@@ -15,6 +15,7 @@ export type CopilotResponse = {
   text: string;
   bullets: string[];
   citations: string[];
+  source?: "live" | "canned";
 };
 
 function totals(months: ForecastMonth[]) {
