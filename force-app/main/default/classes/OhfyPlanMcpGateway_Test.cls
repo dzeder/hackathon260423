@@ -91,4 +91,51 @@ private class OhfyPlanMcpGateway_Test {
         System.assertEquals('{}', req.getBody(), 'null payload defaults to {}');
         System.assertEquals('application/json', req.getHeader('Content-Type'));
     }
+
+    private class CopilotMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest req) {
+            System.assert(req.getEndpoint().endsWith('/api/copilot'), 'routes to copilot path');
+            System.assertEquals('POST', req.getMethod(), 'uses POST');
+            HttpResponse res = new HttpResponse();
+            res.setStatusCode(200);
+            res.setStatus('OK');
+            res.setBody('{"text":"stub","bullets":["a","b"],"citations":["ref"],"source":"canned"}');
+            return res;
+        }
+    }
+
+    @IsTest
+    static void invokeCopilot_success_returnsBody() {
+        Test.setMock(HttpCalloutMock.class, new CopilotMock());
+
+        Test.startTest();
+        String body = OhfyPlanMcpGateway.invokeCopilot(
+            'What if the Iron Bowl lands?', 'yellowhammer-6mo', 'iron-bowl-2026'
+        );
+        Test.stopTest();
+
+        System.assert(body.contains('"source":"canned"'), 'response body passed through');
+    }
+
+    @IsTest
+    static void invokeCopilot_blankPrompt_throws() {
+        Boolean threw = false;
+        try {
+            OhfyPlanMcpGateway.invokeCopilot('', 'yellowhammer-6mo', '');
+        } catch (AuraHandledException e) {
+            threw = true;
+        }
+        System.assertEquals(true, threw, 'blank prompt must raise AuraHandledException');
+    }
+
+    @IsTest
+    static void invokeCopilot_blankScenario_throws() {
+        Boolean threw = false;
+        try {
+            OhfyPlanMcpGateway.invokeCopilot('hello', '', '');
+        } catch (AuraHandledException e) {
+            threw = true;
+        }
+        System.assertEquals(true, threw, 'blank scenarioId must raise AuraHandledException');
+    }
 }

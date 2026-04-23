@@ -1,0 +1,11 @@
+# LWC Jest tests — local dev only, never deploy
+**/lwc/**/__tests__/**
+**/lwc/jest.config.js
+**/lwc/jsconfig.json
+
+# Node / build artifacts
+**/node_modules/**
+**/*.log
+
+# Secrets
+**/.env*
