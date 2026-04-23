@@ -1,0 +1,12 @@
+[
+  { "id": "sku-bud-light-24-12",         "supplier_id": "sup-ab",           "family": "bud-light",     "pack": "24x12oz can",     "unit_price_usd": 21.50 },
+  { "id": "sku-michelob-ultra-24-12",    "supplier_id": "sup-ab",           "family": "michelob-ultra","pack": "24x12oz can",     "unit_price_usd": 23.80 },
+  { "id": "sku-budweiser-24-12",         "supplier_id": "sup-ab",           "family": "budweiser",     "pack": "24x12oz can",     "unit_price_usd": 21.50 },
+  { "id": "sku-modelo-especial-24-12",   "supplier_id": "sup-constellation","family": "modelo",        "pack": "24x12oz can",     "unit_price_usd": 26.40 },
+  { "id": "sku-corona-extra-24-12",      "supplier_id": "sup-constellation","family": "corona",        "pack": "24x12oz bottle",  "unit_price_usd": 28.10 },
+  { "id": "sku-sam-adams-boston-24-12",  "supplier_id": "sup-boston-beer",  "family": "sam-adams",     "pack": "24x12oz bottle",  "unit_price_usd": 27.90 },
+  { "id": "sku-truly-24-12",             "supplier_id": "sup-boston-beer",  "family": "truly",         "pack": "24x12oz can",     "unit_price_usd": 26.00 },
+  { "id": "sku-redbull-8-4-8.4",         "supplier_id": "sup-red-bull",     "family": "red-bull",      "pack": "24x8.4oz can",    "unit_price_usd": 47.90 },
+  { "id": "sku-redbull-sugarfree-24-12", "supplier_id": "sup-red-bull",     "family": "red-bull-sf",   "pack": "24x12oz can",     "unit_price_usd": 52.40 },
+  { "id": "sku-yuengling-lager-24-12",   "supplier_id": "sup-yuengling",    "family": "yuengling",     "pack": "24x12oz bottle",  "unit_price_usd": 22.70 }
+]

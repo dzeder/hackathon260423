@@ -1,0 +1,60 @@
+name: _checkpoint
+on:
+  workflow_call:
+    inputs:
+      time:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for ANTHROPIC_API_KEY
+        id: check
+        run: |
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "ANTHROPIC_API_KEY missing — skipping checkpoint generation."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.skip == 'false'
+        with:
+          python-version: '3.11'
+      - name: Install anthropic SDK
+        if: steps.check.outputs.skip == 'false'
+        run: pip install anthropic
+      - name: Run checkpoint
+        if: steps.check.outputs.skip == 'false'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 .github/scripts/checkpoint.py --time=${{ inputs.time }} > checkpoint-${{ inputs.time }}.md
+      - name: Post to Slack
+        if: steps.check.outputs.skip == 'false'
+        env:
+          WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "SLACK_WEBHOOK_URL missing — skipping post."
+            exit 0
+          fi
+          MSG=$(cat checkpoint-${{ inputs.time }}.md | head -c 1500 | sed 's/"/\\"/g')
+          curl -s -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"@captain ${{ inputs.time }} CHECKPOINT:\n$MSG\"}" \
+            "$WEBHOOK" || true
+      - name: Gate merges until ack
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          git config user.name "checkpoint-bot"
+          git config user.email "checkpoint@ohanafy.local"
+          touch .checkpoint-${{ inputs.time }}-pending
+          git add .checkpoint-${{ inputs.time }}-pending
+          git diff --staged --quiet || git commit -m "gate: ${{ inputs.time }} checkpoint pending"
+          git push || true

@@ -1,0 +1,15 @@
+name: Checkpoint 330pm
+on:
+  schedule:
+    - cron: '30 20 * * *'  # 3:30 PM CDT = 20:30 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  checkpoint:
+    uses: ./.github/workflows/_checkpoint.yml
+    secrets: inherit
+    with:
+      time: '330pm'

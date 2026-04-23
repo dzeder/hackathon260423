@@ -1,0 +1,17 @@
+<template>
+    <lightning-card title="Ohanafy Plan — Scenario Engine" icon-name="standard:forecasts">
+        <div class="slds-p-horizontal_medium">
+            <p class="slds-text-heading_small">Scenario: {scenarioName}</p>
+            <lightning-button
+                label="Apply Iron Bowl event"
+                variant="brand"
+                onclick={handleApplyEvent}
+                disabled={isLoading}
+                class="slds-m-top_small"
+            ></lightning-button>
+            <template lwc:if={lastResponse}>
+                <pre class="slds-m-top_small slds-text-body_small">{lastResponse}</pre>
+            </template>
+        </div>
+    </lightning-card>
+</template>

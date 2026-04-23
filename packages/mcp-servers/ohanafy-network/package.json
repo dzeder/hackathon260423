@@ -1,0 +1,29 @@
+{
+  "name": "@ohanafy-plan/mcp-network",
+  "version": "0.0.0",
+  "private": true,
+  "description": "MCP server: cross-wholesaler network signals (DynamoDB-backed, anonymized)",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "dd-trace": "^5.0.0",
+    "pino": "^9.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "tsx": "^4.11.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
