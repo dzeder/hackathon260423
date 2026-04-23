@@ -1,0 +1,24 @@
+{
+  "name": "ohanafy-plan-demo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Ohanafy Plan — hackathon demo kernel (web app + MCP servers + SFDX 2GP).",
+  "workspaces": [
+    "packages/web-app",
+    "packages/mcp-servers",
+    "packages/mcp-servers/ohanafy-forecast",
+    "packages/mcp-servers/ohanafy-events",
+    "packages/mcp-servers/ohanafy-memory",
+    "packages/mcp-servers/ohanafy-network"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

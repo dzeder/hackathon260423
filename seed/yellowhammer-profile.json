@@ -1,0 +1,37 @@
+{
+  "tenant": "yellowhammer",
+  "legal_name": "Yellowhammer Beverage Company, LLC",
+  "dba": "Yellowhammer Beverage",
+  "hq": {
+    "city": "Birmingham",
+    "state": "AL",
+    "country": "US"
+  },
+  "territory": {
+    "states": ["AL"],
+    "counties_primary": ["Jefferson", "Shelby", "Tuscaloosa", "Madison", "Mobile"],
+    "depot_count": 3
+  },
+  "fiscal": {
+    "year_end_month": 12,
+    "currency": "USD",
+    "first_forecast_month": "2026-05",
+    "horizon_months": 6
+  },
+  "scale": {
+    "annual_revenue_usd_m": 62,
+    "headcount": 210,
+    "route_trucks": 42,
+    "cases_per_year_m": 3.8
+  },
+  "cfo_persona": {
+    "name": "Dan Whitlow",
+    "title": "CFO",
+    "priorities": [
+      "tight GM control on imported Red Bull SKUs",
+      "supplier co-op reimbursements clean in the three-statement view",
+      "weekly cash conversion cycle visibility"
+    ]
+  },
+  "notes": "Fictional demo customer. Modeled on a real Alabama beer + Red Bull wholesaler pilot. Do not share externally."
+}

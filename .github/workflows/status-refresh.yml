@@ -1,0 +1,43 @@
+name: Status Refresh
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for ANTHROPIC_API_KEY
+        id: check
+        run: |
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "ANTHROPIC_API_KEY missing — skipping status refresh."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.skip == 'false'
+        with:
+          python-version: '3.11'
+      - name: Install anthropic SDK
+        if: steps.check.outputs.skip == 'false'
+        run: pip install anthropic
+      - name: Generate STATUS.md
+        if: steps.check.outputs.skip == 'false'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python3 .github/scripts/status_refresh.py > STATUS.md
+      - name: Commit
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          git config user.name "status-bot"
+          git config user.email "status@ohanafy.local"
+          git add STATUS.md
+          git diff --staged --quiet || git commit -m "chore: status refresh"
+          git push || true

@@ -1,0 +1,50 @@
+name: Slack Notify
+on:
+  push:
+    branches: ['track-*']
+  pull_request:
+    types: [opened, closed, ready_for_review]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for webhook
+        id: check
+        run: |
+          if [ -z "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "SLACK_WEBHOOK_URL missing — skipping Slack ping."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build message
+        if: steps.check.outputs.skip == 'false'
+        id: msg
+        run: |
+          case "${{ github.event_name }}" in
+            push)
+              TEXT="🔵 [${{ github.ref_name }}] @${{ github.actor }} pushed: ${{ github.event.head_commit.message }}"
+              ;;
+            pull_request)
+              ACTION="${{ github.event.action }}"
+              PR_TITLE="${{ github.event.pull_request.title }}"
+              PR_URL="${{ github.event.pull_request.html_url }}"
+              case "$ACTION" in
+                opened) TEXT="🟡 PR opened: <${PR_URL}|${PR_TITLE}>" ;;
+                closed) TEXT="🟢 PR closed: <${PR_URL}|${PR_TITLE}>" ;;
+                ready_for_review) TEXT="👀 PR ready for review: <${PR_URL}|${PR_TITLE}>" ;;
+                *) TEXT="PR event: $ACTION — <${PR_URL}|${PR_TITLE}>" ;;
+              esac
+              ;;
+            *) TEXT="Event: ${{ github.event_name }}" ;;
+          esac
+          # escape quotes for JSON
+          TEXT_ESCAPED=$(echo "$TEXT" | sed 's/"/\\"/g')
+          echo "text=$TEXT_ESCAPED" >> "$GITHUB_OUTPUT"
+      - name: Post to Slack
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          curl -s -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"${{ steps.msg.outputs.text }}\"}" \
+            "${{ secrets.SLACK_WEBHOOK_URL }}" || true

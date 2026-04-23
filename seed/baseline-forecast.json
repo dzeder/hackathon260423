@@ -1,0 +1,54 @@
+{
+  "tenant": "yellowhammer",
+  "unit": "USD_thousands",
+  "horizon_months": 6,
+  "baseline": [
+    { "month": "2026-05", "revenue": 4820, "cogs": 3180, "opex": 920, "gm": 1640, "ebitda": 720 },
+    { "month": "2026-06", "revenue": 5210, "cogs": 3420, "opex": 940, "gm": 1790, "ebitda": 850 },
+    { "month": "2026-07", "revenue": 5480, "cogs": 3590, "opex": 960, "gm": 1890, "ebitda": 930 },
+    { "month": "2026-08", "revenue": 5310, "cogs": 3480, "opex": 945, "gm": 1830, "ebitda": 885 },
+    { "month": "2026-09", "revenue": 5050, "cogs": 3310, "opex": 935, "gm": 1740, "ebitda": 805 },
+    { "month": "2026-10", "revenue": 4780, "cogs": 3130, "opex": 920, "gm": 1650, "ebitda": 730 }
+  ],
+  "assumptions": {
+    "gm_pct_baseline": 34.0,
+    "opex_ratio_baseline": 17.9,
+    "channel_mix_pct": { "on_premise": 28, "off_chain": 46, "off_indep": 26 },
+    "supplier_mix_pct": {
+      "sup-ab": 48,
+      "sup-constellation": 18,
+      "sup-boston-beer": 6,
+      "sup-red-bull": 22,
+      "sup-yuengling": 6
+    }
+  },
+  "event_templates_seed": [
+    {
+      "id": "iron-bowl-2026",
+      "label": "Iron Bowl weekend (Auburn vs Alabama)",
+      "month": "2026-10",
+      "revenue_delta_pct": 9.5,
+      "cogs_delta_pct": 7.2,
+      "opex_delta_abs": 35,
+      "source": "CFBD college football calendar"
+    },
+    {
+      "id": "heat-wave-july",
+      "label": "July heat wave — off-premise energy spike",
+      "month": "2026-07",
+      "revenue_delta_pct": 3.1,
+      "cogs_delta_pct": 2.2,
+      "opex_delta_abs": 10,
+      "source": "NOAA seasonal outlook"
+    },
+    {
+      "id": "fuel-surcharge-q3",
+      "label": "Diesel price surge — route cost headwind",
+      "month": "2026-08",
+      "revenue_delta_pct": 0,
+      "cogs_delta_pct": 1.4,
+      "opex_delta_abs": 28,
+      "source": "EIA weekly fuel price"
+    }
+  ]
+}

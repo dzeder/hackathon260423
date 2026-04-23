@@ -1,0 +1,15 @@
+name: Checkpoint 12pm
+on:
+  schedule:
+    - cron: '0 17 * * *'  # 12:00 PM CDT = 17:00 UTC (CST becomes 18:00 UTC — adjust in winter)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  checkpoint:
+    uses: ./.github/workflows/_checkpoint.yml
+    secrets: inherit
+    with:
+      time: '12pm'

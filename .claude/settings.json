@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/settings.schema.json",
+  "model": "claude-opus-4-7",
+  "tools": {
+    "enabled": ["bash", "view", "str_replace", "create_file"],
+    "mcp": ["ohanafy-forecast", "ohanafy-events", "ohanafy-memory", "ohanafy-network", "context7"]
+  },
+  "hooks": {
+    "postCommit": ".claude/hooks/post-commit-log.sh",
+    "prePush": ".claude/hooks/pre-push-ci-gate.sh",
+    "preMerge": ".claude/hooks/pre-merge-human-gate.sh",
+    "postMerge": ".claude/hooks/post-merge-slack.sh"
+  }
+}

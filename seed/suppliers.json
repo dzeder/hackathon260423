@@ -1,0 +1,37 @@
+[
+  {
+    "id": "sup-ab",
+    "name": "Anheuser-Busch",
+    "category": "beer-domestic",
+    "contract_type": "exclusive-territory",
+    "share_of_revenue_pct": 48
+  },
+  {
+    "id": "sup-constellation",
+    "name": "Constellation Brands",
+    "category": "beer-import",
+    "contract_type": "exclusive-territory",
+    "share_of_revenue_pct": 18
+  },
+  {
+    "id": "sup-boston-beer",
+    "name": "Boston Beer Company",
+    "category": "beer-craft",
+    "contract_type": "non-exclusive",
+    "share_of_revenue_pct": 6
+  },
+  {
+    "id": "sup-red-bull",
+    "name": "Red Bull North America",
+    "category": "energy",
+    "contract_type": "exclusive-territory",
+    "share_of_revenue_pct": 22
+  },
+  {
+    "id": "sup-yuengling",
+    "name": "D.G. Yuengling & Son",
+    "category": "beer-regional",
+    "contract_type": "non-exclusive",
+    "share_of_revenue_pct": 6
+  }
+]

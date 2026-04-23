@@ -1,0 +1,23 @@
+[
+  {
+    "id": "ch-on-premise",
+    "name": "On-Premise (bars, restaurants, stadiums)",
+    "share_of_revenue_pct": 28,
+    "margin_pct": 22,
+    "notes": "High-touch, event-sensitive. Big swing on football weekends + festivals."
+  },
+  {
+    "id": "ch-off-chain",
+    "name": "Off-Premise Chain (Publix, Walmart, Target)",
+    "share_of_revenue_pct": 46,
+    "margin_pct": 14,
+    "notes": "Volume anchor. National pricing ladders; exposed to promo calendars."
+  },
+  {
+    "id": "ch-off-indep",
+    "name": "Off-Premise Independent (c-stores, liquor stores)",
+    "share_of_revenue_pct": 26,
+    "margin_pct": 19,
+    "notes": "Regional/local. Red Bull skew higher here than chain channel."
+  }
+]

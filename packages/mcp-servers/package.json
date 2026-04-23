@@ -1,0 +1,11 @@
+{
+  "name": "@ohanafy-plan/mcp-servers",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Track B — MCP servers for Ohanafy Plan (forecast, events, memory, network)",
+  "scripts": {
+    "test": "echo 'mcp-servers root: per-server tests run in child workspaces' && exit 0",
+    "lint": "echo 'mcp-servers root: per-server lint runs in child workspaces' && exit 0",
+    "typecheck": "echo 'mcp-servers root: per-server typecheck runs in child workspaces' && exit 0"
+  }
+}
