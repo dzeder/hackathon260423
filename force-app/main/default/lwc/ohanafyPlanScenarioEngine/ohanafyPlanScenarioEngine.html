@@ -1,41 +1,102 @@
 <template>
-    <lightning-card title="Ohanafy Plan — Scenario Engine" icon-name="standard:forecasts">
-        <div class="slds-p-horizontal_medium slds-p-bottom_medium">
+    <div class="ohfy-dashboard">
+        <aside class="ohfy-sidebar">
+            <header class="ohfy-sidebar__header">
+                <div>
+                    <p class="ohfy-sidebar__eyebrow">Filters</p>
+                    <p class="ohfy-sidebar__title">Event library</p>
+                </div>
+                <lightning-button
+                    label="Reset"
+                    variant="neutral"
+                    onclick={handleReset}
+                    disabled={canReset}
+                    class="ohfy-sidebar__reset"
+                ></lightning-button>
+            </header>
+
+            <input
+                type="search"
+                value={searchQuery}
+                placeholder="Search events…"
+                oninput={handleSearch}
+                class="ohfy-search"
+                data-testid="event-search"
+            />
+
+            <div class="ohfy-chips">
+                <template for:each={categoryChips} for:item="chip">
+                    <button
+                        key={chip.id}
+                        type="button"
+                        data-id={chip.id}
+                        onclick={handleCategory}
+                        class={chip.className}
+                    >{chip.label}</button>
+                </template>
+            </div>
 
             <lightning-combobox
-                name="scenario"
-                label="Scenario"
-                value={scenarioId}
-                options={scenarioOptions}
-                onchange={handleScenarioChange}
-                class="slds-m-bottom_small"
+                label="Sort"
+                variant="label-hidden"
+                value={sortKey}
+                options={sortOptions}
+                onchange={handleSortChange}
+                class="ohfy-sort"
             ></lightning-combobox>
 
-            <p class="slds-text-heading_small slds-m-top_small">
-                Applied events: {eventCountLabel}
-            </p>
+            <p class="ohfy-sidebar__count">{visibleLabel}</p>
 
-            <ul class="slds-has-dividers_bottom-space slds-m-top_x-small">
+            <ul class="ohfy-event-list">
                 <template for:each={events} for:item="event">
-                    <li key={event.id} class="slds-item slds-grid slds-grid_align-spread slds-p-vertical_xx-small">
-                        <div>
-                            <p class="slds-text-body_regular">{event.label}</p>
-                            <p class="slds-text-body_small slds-text-color_weak">
-                                {event.month} · Δrev {event.revenueDeltaPct}%
-                            </p>
-                        </div>
-                        <lightning-button
+                    <li key={event.id} class={event.rowClass}>
+                        <button
                             data-id={event.id}
-                            label={event.buttonLabel}
-                            variant={event.variant}
                             onclick={handleEventToggle}
-                        ></lightning-button>
+                            class="ohfy-event__btn"
+                            type="button"
+                        >
+                            <div class="ohfy-event__head">
+                                <span class="ohfy-event__label">{event.label}</span>
+                                <span class={event.categoryClass}>{event.category}</span>
+                            </div>
+                            <div class="ohfy-event__meta">
+                                <span class="ohfy-event__month">{event.month}</span>
+                                <span class={event.deltaClass}>{event.deltaLabel}</span>
+                            </div>
+                        </button>
                     </li>
                 </template>
+                <template lwc:if={noEvents}>
+                    <li class="ohfy-event-empty">No events match these filters.</li>
+                </template>
             </ul>
+        </aside>
 
-            <div class="slds-grid slds-gutters slds-m-top_small">
-                <div class="slds-col">
+        <main class="ohfy-main">
+            <header class="ohfy-topbar">
+                <div class="ohfy-brand">
+                    <div class="ohfy-brand__icon">
+                        <lightning-icon icon-name="standard:forecasts" size="small"></lightning-icon>
+                    </div>
+                    <div>
+                        <p class="ohfy-brand__title">Yellowhammer Beverage · Scenario planner</p>
+                        <p class="ohfy-brand__subtitle">Birmingham, AL — 6-month horizon · USD thousands</p>
+                    </div>
+                </div>
+                <div class="ohfy-topbar__actions">
+                    <lightning-combobox
+                        label="Scenario"
+                        variant="label-hidden"
+                        value={scenarioId}
+                        options={scenarioOptions}
+                        onchange={handleScenarioChange}
+                        class="ohfy-scenario-select"
+                    ></lightning-combobox>
+                    <span class="ohfy-pill">
+                        <span class="ohfy-pill__muted">Events</span>
+                        <span class="ohfy-pill__value">{eventCountLabel}</span>
+                    </span>
                     <lightning-button
                         label="Run scenario"
                         variant="brand"
@@ -43,19 +104,11 @@
                         disabled={isLoading}
                     ></lightning-button>
                 </div>
-                <div class="slds-col">
-                    <lightning-button
-                        label="Reset"
-                        variant="neutral"
-                        onclick={handleReset}
-                        disabled={canReset}
-                    ></lightning-button>
-                </div>
-            </div>
+            </header>
 
             <template lwc:if={hasError}>
                 <div
-                    class="slds-notify slds-notify_alert slds-theme_alert-texture slds-theme_error slds-m-top_small"
+                    class="slds-notify slds-notify_alert slds-theme_alert-texture slds-theme_error"
                     role="alert"
                     data-testid="gateway-error"
                 >
@@ -64,17 +117,133 @@
                 </div>
             </template>
 
+            <section class="ohfy-kpi-row">
+                <div class="ohfy-kpi">
+                    <p class="ohfy-kpi__label">Revenue (6mo)</p>
+                    <div class="ohfy-kpi__value-row">
+                        <span class="ohfy-kpi__value">{revenueKpi.value}</span>
+                        <span class={revenueKpiClass}>{revenueKpi.delta}</span>
+                    </div>
+                </div>
+                <div class="ohfy-kpi">
+                    <p class="ohfy-kpi__label">EBITDA (6mo)</p>
+                    <div class="ohfy-kpi__value-row">
+                        <span class="ohfy-kpi__value">{ebitdaKpi.value}</span>
+                        <span class={ebitdaKpiClass}>{ebitdaKpi.delta}</span>
+                    </div>
+                </div>
+                <div class="ohfy-kpi">
+                    <p class="ohfy-kpi__label">Gross margin</p>
+                    <div class="ohfy-kpi__value-row">
+                        <span class="ohfy-kpi__value">{gmKpi.value}</span>
+                        <span class={gmKpiClass}>{gmKpi.delta}</span>
+                    </div>
+                </div>
+            </section>
+
             <template lwc:if={hasSnapshot}>
-                <div
-                    class="slds-box slds-theme_shade slds-m-top_small"
-                    data-testid="snapshot-summary"
-                >
-                    <p class="slds-text-heading_small">Scenario result</p>
-                    <p class="slds-text-body_small">
+                <section class="ohfy-card" data-testid="snapshot-summary">
+                    <header class="ohfy-card__header">
+                        <h3 class="ohfy-card__title">Revenue — baseline vs scenario</h3>
+                        <p class="ohfy-card__subtitle">Monthly · $ thousands</p>
+                    </header>
+                    <div class="ohfy-chart">
+                        <template for:each={revenueBars} for:item="bar">
+                            <div key={bar.key} class="ohfy-chart__group">
+                                <div class="ohfy-chart__bars">
+                                    <div class="ohfy-bar ohfy-bar_baseline" style={bar.baselineStyle}></div>
+                                    <div class={bar.scenarioClass} style={bar.scenarioStyle}></div>
+                                </div>
+                                <span class="ohfy-chart__label">{bar.month}</span>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="ohfy-legend">
+                        <span class="ohfy-legend__dot ohfy-legend__dot_baseline"></span> Baseline
+                        <span class="ohfy-legend__dot ohfy-legend__dot_scenario"></span> Scenario
+                    </div>
+                    <p class="ohfy-card__footer">
                         6-month EBITDA total: <strong>{ebitdaTotalLabel}</strong>
                     </p>
+                </section>
+
+                <section class="ohfy-card">
+                    <header class="ohfy-card__header">
+                        <h3 class="ohfy-card__title">EBITDA per month</h3>
+                        <p class="ohfy-card__subtitle">Red bars = below baseline</p>
+                    </header>
+                    <div class="ohfy-chart">
+                        <template for:each={ebitdaBars} for:item="bar">
+                            <div key={bar.key} class="ohfy-chart__group">
+                                <div class="ohfy-chart__bars">
+                                    <div class="ohfy-bar ohfy-bar_baseline" style={bar.baselineStyle}></div>
+                                    <div class={bar.scenarioClass} style={bar.scenarioStyle}></div>
+                                </div>
+                                <span class="ohfy-chart__label">{bar.month}</span>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+
+                <section class="ohfy-tables">
+                    <div class="ohfy-card">
+                        <header class="ohfy-card__header">
+                            <h3 class="ohfy-card__title">Income statement</h3>
+                            <p class="ohfy-card__subtitle">6mo totals</p>
+                        </header>
+                        <dl class="ohfy-dl">
+                            <template for:each={incomeRows} for:item="row">
+                                <div key={row.key} class={row.rowClass}>
+                                    <dt>{row.label}</dt>
+                                    <dd>
+                                        <span class="ohfy-mono">{row.value}</span>
+                                        <template lwc:if={row.hasExtra}>
+                                            <span class="ohfy-dl__extra">{row.extra}</span>
+                                        </template>
+                                    </dd>
+                                </div>
+                            </template>
+                        </dl>
+                    </div>
+
+                    <div class="ohfy-card">
+                        <header class="ohfy-card__header">
+                            <h3 class="ohfy-card__title">Balance sheet</h3>
+                            <p class="ohfy-card__subtitle">Closing</p>
+                        </header>
+                        <dl class="ohfy-dl">
+                            <template for:each={balanceRows} for:item="row">
+                                <div key={row.key} class={row.rowClass}>
+                                    <dt>{row.label}</dt>
+                                    <dd><span class="ohfy-mono">{row.value}</span></dd>
+                                </div>
+                            </template>
+                        </dl>
+                    </div>
+
+                    <div class="ohfy-card">
+                        <header class="ohfy-card__header">
+                            <h3 class="ohfy-card__title">Cash flow</h3>
+                            <p class="ohfy-card__subtitle">6mo</p>
+                        </header>
+                        <dl class="ohfy-dl">
+                            <template for:each={cashRows} for:item="row">
+                                <div key={row.key} class={row.rowClass}>
+                                    <dt>{row.label}</dt>
+                                    <dd><span class="ohfy-mono">{row.value}</span></dd>
+                                </div>
+                            </template>
+                        </dl>
+                    </div>
+                </section>
+            </template>
+
+            <template lwc:if={showEmptyState}>
+                <div class="ohfy-empty">
+                    <p class="ohfy-empty__title">Pick a few events, then press <strong>Run scenario</strong>.</p>
+                    <p class="ohfy-empty__sub">Results will populate KPIs, charts, and the three-statement table.</p>
                 </div>
             </template>
-        </div>
-    </lightning-card>
+        </main>
+    </div>
 </template>

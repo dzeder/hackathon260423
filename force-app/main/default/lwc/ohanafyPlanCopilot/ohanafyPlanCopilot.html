@@ -1,101 +1,124 @@
 <template>
-    <lightning-card title="Ohanafy Plan — Copilot" icon-name="standard:einstein">
-        <div class="slds-p-horizontal_medium slds-p-bottom_medium">
+    <div class="ohfy-copilot-host">
+        <button
+            type="button"
+            class="ohfy-copilot__fab"
+            onclick={handleOpen}
+            lwc:if={fabVisible}
+            data-testid="copilot-open"
+        >
+            <span class="ohfy-copilot__fab-icon">
+                <lightning-icon icon-name="utility:einstein" size="xx-small" alternative-text="Ask copilot"></lightning-icon>
+            </span>
+            Ask copilot
+        </button>
 
-            <lightning-combobox
-                name="scenario"
-                label="Scenario"
-                value={scenarioId}
-                options={scenarioOptions}
-                onchange={handleScenarioChange}
-                class="slds-m-bottom_small"
-            ></lightning-combobox>
+        <template lwc:if={isOpen}>
+            <div class="ohfy-copilot__backdrop" onclick={handleClose}></div>
+            <section class="ohfy-copilot__drawer" role="dialog" aria-label="Copilot chat">
+                <header class="ohfy-copilot__header">
+                    <div>
+                        <p class="ohfy-copilot__eyebrow">Copilot</p>
+                        <p class="ohfy-copilot__title">Ask about this scenario</p>
+                        <p class="ohfy-copilot__sub">Grounded in baseline + {eventCountLabel}.</p>
+                    </div>
+                    <button
+                        type="button"
+                        class="ohfy-copilot__close"
+                        onclick={handleClose}
+                        aria-label="Close copilot"
+                        data-testid="copilot-close"
+                    >×</button>
+                </header>
 
-            <p class="slds-text-heading_small slds-m-top_small">Applied events</p>
-            <ul class="slds-has-dividers_bottom-space slds-m-top_x-small">
-                <template for:each={eventOptions} for:item="event">
-                    <li key={event.id} class="slds-item slds-grid slds-grid_align-spread slds-p-vertical_xx-small">
-                        <span class="slds-text-body_regular">{event.label}</span>
-                        <lightning-button
+                <div class="ohfy-copilot__scenario">
+                    <lightning-combobox
+                        name="scenario"
+                        label="Scenario"
+                        variant="label-hidden"
+                        value={scenarioId}
+                        options={scenarioOptions}
+                        onchange={handleScenarioChange}
+                    ></lightning-combobox>
+                </div>
+
+                <div class="ohfy-copilot__chips" data-testid="copilot-events">
+                    <template for:each={eventOptions} for:item="event">
+                        <button
+                            key={event.id}
+                            type="button"
                             data-id={event.id}
-                            label={event.buttonLabel}
-                            variant={event.variant}
+                            class={event.chipClass}
                             onclick={handleEventToggle}
-                        ></lightning-button>
-                    </li>
-                </template>
-            </ul>
+                        >{event.label}</button>
+                    </template>
+                </div>
 
-            <lightning-textarea
-                name="prompt"
-                label="Ask the copilot"
-                placeholder="Ask about EBITDA, revenue, or specific events…"
-                value={prompt}
-                onchange={handlePromptChange}
-                class="slds-m-top_small"
-                data-testid="copilot-prompt"
-            ></lightning-textarea>
+                <div class="ohfy-copilot__suggestions" data-testid="copilot-suggestions">
+                    <template for:each={suggestions} for:item="suggestion">
+                        <button
+                            key={suggestion}
+                            type="button"
+                            class="ohfy-copilot__suggestion"
+                            data-value={suggestion}
+                            onclick={handleSuggestion}
+                            disabled={isLoading}
+                        >{suggestion}</button>
+                    </template>
+                </div>
 
-            <div class="slds-m-top_x-small" data-testid="copilot-suggestions">
-                <template for:each={suggestions} for:item="suggestion">
+                <div class="ohfy-copilot__stream">
+                    <template lwc:if={hasError}>
+                        <div class="ohfy-copilot__error" role="alert" data-testid="copilot-error">{errorMessage}</div>
+                    </template>
+
+                    <template lwc:if={hasResponse}>
+                        <article class="ohfy-copilot__response" data-testid="copilot-response">
+                            <span class={sourceBadgeClass}>{sourceLabel}</span>
+                            <p class="ohfy-copilot__response-text">{response.text}</p>
+                            <template lwc:if={response.bullets.length}>
+                                <ul class="ohfy-copilot__bullets">
+                                    <template for:each={response.bullets} for:item="bullet">
+                                        <li key={bullet}>{bullet}</li>
+                                    </template>
+                                </ul>
+                            </template>
+                            <template lwc:if={response.citations.length}>
+                                <p class="ohfy-copilot__sources">
+                                    Sources:
+                                    <template for:each={response.citations} for:item="cite">
+                                        <span key={cite} class="ohfy-copilot__source"> · {cite}</span>
+                                    </template>
+                                </p>
+                            </template>
+                        </article>
+                    </template>
+
+                    <template lwc:if={showEmpty}>
+                        <p class="ohfy-copilot__empty">Ask a question or pick a suggestion to get started.</p>
+                    </template>
+                </div>
+
+                <form class="ohfy-copilot__form" onsubmit={handleSubmit}>
+                    <lightning-textarea
+                        name="prompt"
+                        label="Ask the copilot"
+                        variant="label-hidden"
+                        placeholder="Ask about EBITDA, revenue, or specific events…"
+                        value={prompt}
+                        onchange={handlePromptChange}
+                        class="ohfy-copilot__textarea"
+                        data-testid="copilot-prompt"
+                    ></lightning-textarea>
                     <lightning-button
-                        key={suggestion}
-                        label={suggestion}
-                        data-value={suggestion}
-                        variant="neutral"
-                        onclick={handleSuggestion}
-                        class="slds-m-right_x-small slds-m-bottom_x-small"
+                        label={submitLabel}
+                        variant="brand"
+                        onclick={handleSubmit}
+                        disabled={submitDisabled}
+                        data-testid="copilot-submit"
                     ></lightning-button>
-                </template>
-            </div>
-
-            <div class="slds-m-top_small">
-                <lightning-button
-                    label="Ask copilot"
-                    variant="brand"
-                    onclick={handleSubmit}
-                    disabled={submitDisabled}
-                    data-testid="copilot-submit"
-                ></lightning-button>
-            </div>
-
-            <template lwc:if={hasError}>
-                <div
-                    class="slds-notify slds-notify_alert slds-theme_alert-texture slds-theme_error slds-m-top_small"
-                    role="alert"
-                    data-testid="copilot-error"
-                >
-                    <span class="slds-assistive-text">error</span>
-                    {errorMessage}
-                </div>
-            </template>
-
-            <template lwc:if={hasResponse}>
-                <div class="slds-box slds-theme_shade slds-m-top_small" data-testid="copilot-response">
-                    <p class="slds-text-heading_small">
-                        Response
-                        <span class={sourceBadgeClass}>{sourceLabel}</span>
-                    </p>
-                    <p class="slds-text-body_regular slds-m-top_x-small">{response.text}</p>
-
-                    <template lwc:if={response.bullets.length}>
-                        <ul class="slds-list_dotted slds-m-top_x-small">
-                            <template for:each={response.bullets} for:item="bullet">
-                                <li key={bullet}>{bullet}</li>
-                            </template>
-                        </ul>
-                    </template>
-
-                    <template lwc:if={response.citations.length}>
-                        <p class="slds-text-body_small slds-text-color_weak slds-m-top_x-small">
-                            Sources:
-                            <template for:each={response.citations} for:item="cite">
-                                <span key={cite} class="slds-m-right_x-small">· {cite}</span>
-                            </template>
-                        </p>
-                    </template>
-                </div>
-            </template>
-        </div>
-    </lightning-card>
+                </form>
+            </section>
+        </template>
+    </div>
 </template>
