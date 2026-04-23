@@ -13,9 +13,13 @@
   ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
+    "test:lwc": "sfdx-lwc-jest --skipApiVersionCheck -- --config jest.config.js",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@salesforce/sfdx-lwc-jest": "^7.0.0"
   },
   "engines": {
     "node": ">=20.0.0",

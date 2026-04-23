@@ -1,16 +1,79 @@
 <template>
     <lightning-card title="Ohanafy Plan — Scenario Engine" icon-name="standard:forecasts">
-        <div class="slds-p-horizontal_medium">
-            <p class="slds-text-heading_small">Scenario: {scenarioName}</p>
-            <lightning-button
-                label="Apply Iron Bowl event"
-                variant="brand"
-                onclick={handleApplyEvent}
-                disabled={isLoading}
-                class="slds-m-top_small"
-            ></lightning-button>
-            <template lwc:if={lastResponse}>
-                <pre class="slds-m-top_small slds-text-body_small">{lastResponse}</pre>
+        <div class="slds-p-horizontal_medium slds-p-bottom_medium">
+
+            <lightning-combobox
+                name="scenario"
+                label="Scenario"
+                value={scenarioId}
+                options={scenarioOptions}
+                onchange={handleScenarioChange}
+                class="slds-m-bottom_small"
+            ></lightning-combobox>
+
+            <p class="slds-text-heading_small slds-m-top_small">
+                Applied events: {eventCountLabel}
+            </p>
+
+            <ul class="slds-has-dividers_bottom-space slds-m-top_x-small">
+                <template for:each={events} for:item="event">
+                    <li key={event.id} class="slds-item slds-grid slds-grid_align-spread slds-p-vertical_xx-small">
+                        <div>
+                            <p class="slds-text-body_regular">{event.label}</p>
+                            <p class="slds-text-body_small slds-text-color_weak">
+                                {event.month} · Δrev {event.revenueDeltaPct}%
+                            </p>
+                        </div>
+                        <lightning-button
+                            data-id={event.id}
+                            label={event.buttonLabel}
+                            variant={event.variant}
+                            onclick={handleEventToggle}
+                        ></lightning-button>
+                    </li>
+                </template>
+            </ul>
+
+            <div class="slds-grid slds-gutters slds-m-top_small">
+                <div class="slds-col">
+                    <lightning-button
+                        label="Run scenario"
+                        variant="brand"
+                        onclick={handleRunScenario}
+                        disabled={isLoading}
+                    ></lightning-button>
+                </div>
+                <div class="slds-col">
+                    <lightning-button
+                        label="Reset"
+                        variant="neutral"
+                        onclick={handleReset}
+                        disabled={canReset}
+                    ></lightning-button>
+                </div>
+            </div>
+
+            <template lwc:if={hasError}>
+                <div
+                    class="slds-notify slds-notify_alert slds-theme_alert-texture slds-theme_error slds-m-top_small"
+                    role="alert"
+                    data-testid="gateway-error"
+                >
+                    <span class="slds-assistive-text">error</span>
+                    {errorMessage}
+                </div>
+            </template>
+
+            <template lwc:if={hasSnapshot}>
+                <div
+                    class="slds-box slds-theme_shade slds-m-top_small"
+                    data-testid="snapshot-summary"
+                >
+                    <p class="slds-text-heading_small">Scenario result</p>
+                    <p class="slds-text-body_small">
+                        6-month EBITDA total: <strong>{ebitdaTotalLabel}</strong>
+                    </p>
+                </div>
             </template>
         </div>
     </lightning-card>
