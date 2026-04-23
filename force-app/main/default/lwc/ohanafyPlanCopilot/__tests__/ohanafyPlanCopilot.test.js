@@ -12,6 +12,11 @@ function flush() {
     return Promise.resolve();
 }
 
+function openDrawer(el) {
+    const fab = el.shadowRoot.querySelector('[data-testid="copilot-open"]');
+    fab.click();
+}
+
 describe('c-ohanafy-plan-copilot', () => {
     afterEach(() => {
         while (document.body.firstChild) {
@@ -20,20 +25,28 @@ describe('c-ohanafy-plan-copilot', () => {
         jest.clearAllMocks();
     });
 
-    it('renders prompt textarea and suggestions', () => {
+    it('renders a launcher FAB and opens the drawer on click', async () => {
         const el = createElement('c-ohanafy-plan-copilot', { is: OhanafyPlanCopilot });
         document.body.appendChild(el);
 
+        const fab = el.shadowRoot.querySelector('[data-testid="copilot-open"]');
+        expect(fab).not.toBeNull();
+
+        openDrawer(el);
+        await flush();
+
         const textarea = el.shadowRoot.querySelector('[data-testid="copilot-prompt"]');
         const suggestions = el.shadowRoot.querySelector('[data-testid="copilot-suggestions"]');
-
         expect(textarea).not.toBeNull();
         expect(suggestions).not.toBeNull();
     });
 
-    it('submit is disabled when prompt is empty', () => {
+    it('submit is disabled when prompt is empty', async () => {
         const el = createElement('c-ohanafy-plan-copilot', { is: OhanafyPlanCopilot });
         document.body.appendChild(el);
+
+        openDrawer(el);
+        await flush();
 
         const submit = el.shadowRoot.querySelector('[data-testid="copilot-submit"]');
         expect(submit.disabled).toBe(true);
@@ -51,6 +64,9 @@ describe('c-ohanafy-plan-copilot', () => {
 
         const el = createElement('c-ohanafy-plan-copilot', { is: OhanafyPlanCopilot });
         document.body.appendChild(el);
+
+        openDrawer(el);
+        await flush();
 
         const textarea = el.shadowRoot.querySelector('[data-testid="copilot-prompt"]');
         textarea.value = 'what happens to ebitda';

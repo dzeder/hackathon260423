@@ -31,14 +31,16 @@ export default class OhanafyPlanCopilot extends LightningElement {
     @track response = null;
     @track errorMessage = null;
     @track isLoading = false;
+    @track isOpen = false;
 
     get eventOptions() {
         const applied = new Set(this.appliedIds);
         return EVENT_OPTIONS.map((e) => ({
             ...e,
             applied: applied.has(e.id),
-            variant: applied.has(e.id) ? 'success' : 'neutral',
-            buttonLabel: applied.has(e.id) ? 'Applied' : 'Apply'
+            chipClass: applied.has(e.id)
+                ? 'ohfy-copilot__chip ohfy-copilot__chip_on'
+                : 'ohfy-copilot__chip'
         }));
     }
 
@@ -60,10 +62,36 @@ export default class OhanafyPlanCopilot extends LightningElement {
     }
 
     get sourceBadgeClass() {
-        const base = 'slds-badge slds-m-left_x-small';
+        const base = 'ohfy-copilot__badge';
         return this.response && this.response.source === 'live'
-            ? `${base} slds-theme_success`
-            : `${base} slds-badge_lightest`;
+            ? `${base} ohfy-copilot__badge_live`
+            : `${base} ohfy-copilot__badge_canned`;
+    }
+
+    get submitLabel() {
+        return this.isLoading ? 'Thinking…' : 'Ask copilot';
+    }
+
+    get fabVisible() {
+        return !this.isOpen;
+    }
+
+    get showEmpty() {
+        return !this.hasResponse && !this.hasError && !this.isLoading;
+    }
+
+    get eventCountLabel() {
+        if (!this.appliedIds.length) return 'baseline only';
+        const n = this.appliedIds.length;
+        return `${n} applied event${n === 1 ? '' : 's'}`;
+    }
+
+    handleOpen() {
+        this.isOpen = true;
+    }
+
+    handleClose() {
+        this.isOpen = false;
     }
 
     handleScenarioChange(event) {
@@ -86,17 +114,23 @@ export default class OhanafyPlanCopilot extends LightningElement {
     }
 
     handleSuggestion(event) {
-        this.prompt = event.currentTarget.dataset.value;
+        const val = event.currentTarget.dataset.value;
+        this.prompt = val;
+        this.submit(val);
     }
 
-    async handleSubmit() {
+    handleSubmit() {
         if (this.submitDisabled) return;
+        this.submit(this.prompt);
+    }
+
+    async submit(text) {
         this.isLoading = true;
         this.errorMessage = null;
         this.response = null;
         try {
             const raw = await invokeCopilot({
-                prompt: this.prompt,
+                prompt: text,
                 scenarioId: this.scenarioId,
                 appliedEventIds: this.appliedIds.join(',')
             });

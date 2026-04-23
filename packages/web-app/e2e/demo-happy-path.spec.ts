@@ -22,12 +22,14 @@ test.describe("demo happy path", () => {
   });
 
   test("copilot responds to Iron Bowl question with citations", async ({ page }) => {
+    test.setTimeout(60_000);
     await page.goto("/");
+    await page.getByTestId("copilot-open").click();
     await page.getByTestId("copilot-prompt").fill("Walk me through the Iron Bowl impact");
     await page.getByTestId("copilot-submit").click();
 
     const response = page.getByTestId("copilot-response");
-    await expect(response).toBeVisible();
+    await expect(response).toBeVisible({ timeout: 30_000 });
     await expect(response).toContainText(/CFBD/i);
   });
 
