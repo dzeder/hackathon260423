@@ -74,4 +74,52 @@ public with sharing class OhfyPlanMcpGateway {
         tools.sort();
         return tools;
     }
+
+    /**
+     * Call the copilot endpoint on the Ohanafy Plan gateway. Not an MCP
+     * tool — routes to /api/copilot. Returns the raw JSON body the LWC
+     * then parses locally (no JSON parsing in Apex to keep shape loose).
+     * @param prompt             CFO question, ≤ 2000 chars.
+     * @param scenarioId         Scenario id (e.g. yellowhammer-6mo).
+     * @param appliedEventIds    CSV of applied event ids (may be empty).
+     */
+    @AuraEnabled(cacheable=false)
+    public static String invokeCopilot(String prompt, String scenarioId, String appliedEventIds) {
+        if (String.isBlank(prompt)) {
+            throw new AuraHandledException('prompt is required');
+        }
+        if (String.isBlank(scenarioId)) {
+            throw new AuraHandledException('scenarioId is required');
+        }
+        List<String> ids = new List<String>();
+        if (String.isNotBlank(appliedEventIds)) {
+            for (String id : appliedEventIds.split(',')) {
+                String trimmed = id.trim();
+                if (String.isNotBlank(trimmed)) ids.add(trimmed);
+            }
+        }
+        Map<String, Object> body = new Map<String, Object>{
+            'prompt' => prompt,
+            'scenarioId' => scenarioId,
+            'appliedEventIds' => ids
+        };
+        HttpRequest req = new HttpRequest();
+        req.setEndpoint(NAMED_CREDENTIAL + '/api/copilot');
+        req.setMethod('POST');
+        req.setHeader('Content-Type', 'application/json');
+        req.setHeader('Accept', 'application/json');
+        req.setTimeout(TIMEOUT_MS);
+        req.setBody(JSON.serialize(body));
+        try {
+            HttpResponse res = new Http().send(req);
+            if (res.getStatusCode() < 200 || res.getStatusCode() >= 300) {
+                throw new AuraHandledException(
+                    'Copilot returned ' + res.getStatusCode() + ': ' + res.getStatus()
+                );
+            }
+            return res.getBody();
+        } catch (CalloutException ce) {
+            throw new AuraHandledException('Copilot callout failed: ' + ce.getMessage());
+        }
+    }
 }
