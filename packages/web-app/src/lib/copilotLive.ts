@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { CircuitBreaker } from "@/lib/circuitBreaker";
 import type { CopilotQuery, CopilotResponse } from "@/lib/copilot";
 import { findEvent } from "@/lib/eventsCatalog";
 
@@ -25,6 +26,17 @@ export class AnthropicKeyMissingError extends Error {
     this.name = "AnthropicKeyMissingError";
   }
 }
+
+/**
+ * Trip after 5 failures in a 60s window, stay open for 30s. Anthropic
+ * outages tend to be transient; these numbers avoid thrashing.
+ */
+export const anthropicBreaker = new CircuitBreaker({
+  name: "anthropic",
+  failureThreshold: 5,
+  windowMs: 60_000,
+  cooldownMs: 30_000,
+});
 
 function totals(months: CopilotQuery["baseline"]) {
     return months.reduce(
@@ -100,17 +112,19 @@ export async function respondLive(q: CopilotQuery): Promise<CopilotResponse> {
     assertAnthropicKey();
     const client = new Anthropic({ timeout: TIMEOUT_MS });
     const context = buildContext(q);
-    const msg = await client.messages.create({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system: SYSTEM_PROMPT,
-        messages: [
-            {
-                role: "user",
-                content: `${context}\n\nQUESTION: ${q.prompt}`,
-            },
-        ],
-    });
+    const msg = await anthropicBreaker.exec(() =>
+        client.messages.create({
+            model: MODEL,
+            max_tokens: MAX_TOKENS,
+            system: SYSTEM_PROMPT,
+            messages: [
+                {
+                    role: "user",
+                    content: `${context}\n\nQUESTION: ${q.prompt}`,
+                },
+            ],
+        }),
+    );
     const textBlock = msg.content.find((b) => b.type === "text");
     if (!textBlock || textBlock.type !== "text") {
         throw new Error("live copilot returned no text block");
