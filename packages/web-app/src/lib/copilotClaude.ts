@@ -25,10 +25,38 @@ import {
  *     iteration so multi-iter ReAct and follow-up turns get cache hits.
  */
 
-const DEFAULT_MODEL = "claude-opus-4-7";
+// Default to Sonnet 4.6 for cost. It handles tool-using agent workflows on par
+// with Opus 4.7 for this use case at ~5x lower cost. Callers can override by
+// passing `model` explicitly (e.g. opus for a flagged-hard scenario).
+const DEFAULT_MODEL = "claude-sonnet-4-6";
 const MAX_ITERATIONS = 5;
 const MAX_TOKENS = 1500;
 const TIMEOUT_MS = 45_000;
+
+// Anthropic pricing per 1M tokens (updated 2026). Numbers are approximate;
+// use only for in-app cost-cap enforcement, not billing. Source of truth is
+// the invoice. Cache reads bill at 0.10x base input; writes at 1.25x.
+const MODEL_PRICING: Record<string, { inputPerM: number; outputPerM: number }> = {
+  "claude-opus-4-7": { inputPerM: 15, outputPerM: 75 },
+  "claude-sonnet-4-6": { inputPerM: 3, outputPerM: 15 },
+  "claude-haiku-4-5-20251001": { inputPerM: 1, outputPerM: 5 },
+};
+const CACHE_READ_MULT = 0.1;
+const CACHE_WRITE_MULT = 1.25;
+
+export function estimateTurnCostUsd(
+  model: string,
+  usage: OrchestratorUsage,
+): number {
+  const price = MODEL_PRICING[model] ?? MODEL_PRICING["claude-sonnet-4-6"];
+  const inCost = (usage.inputTokens * price.inputPerM) / 1_000_000;
+  const readCost =
+    (usage.cacheReadTokens * price.inputPerM * CACHE_READ_MULT) / 1_000_000;
+  const writeCost =
+    (usage.cacheCreationTokens * price.inputPerM * CACHE_WRITE_MULT) / 1_000_000;
+  const outCost = (usage.outputTokens * price.outputPerM) / 1_000_000;
+  return Math.round((inCost + readCost + writeCost + outCost) * 10_000) / 10_000;
+}
 
 export type OrchestratorInput = {
   userText: string;
@@ -60,6 +88,14 @@ export type OrchestratorResult = {
   toolCalls: ToolCallTrace[];
   stopReason: string;
   iterations: number;
+  model: string;
+  costUsd: number;
+  costCapHit: boolean;
+};
+
+export type OrchestratorTurnOptions = {
+  /** Hard per-turn spending cap. Turn aborts mid-loop if cumulative cost exceeds this. */
+  maxCostUsd?: number;
 };
 
 // ---- system prompt ----
@@ -143,10 +179,14 @@ function applyCacheControlToLastMessage(messages: ApiMessage[]): void {
 
 // ---- main entry ----
 
+const DEFAULT_MAX_COST_USD = 0.30;
+
 export async function runCopilotTurn(
   input: OrchestratorInput,
+  options: OrchestratorTurnOptions = {},
 ): Promise<OrchestratorResult> {
   const model = input.model ?? DEFAULT_MODEL;
+  const maxCost = options.maxCostUsd ?? DEFAULT_MAX_COST_USD;
   const client = new Anthropic({ timeout: TIMEOUT_MS });
 
   const systemBlocks = buildSystemBlocks(input.scenarioContext, input.recallBlock);
@@ -199,6 +239,20 @@ export async function runCopilotTurn(
     usage.outputTokens += rawUsage.output_tokens ?? 0;
     usage.cacheReadTokens += rawUsage.cache_read_input_tokens ?? 0;
     usage.cacheCreationTokens += rawUsage.cache_creation_input_tokens ?? 0;
+
+    // Per-turn cost cap. If we've spent enough to exceed maxCost, break out
+    // and return a terminal-style response so the caller's persistence path
+    // captures whatever tool work we did manage.
+    const runningCost = estimateTurnCostUsd(model, usage);
+    if (runningCost > maxCost) {
+      finalText = JSON.stringify({
+        text: `[Cost cap hit at $${runningCost.toFixed(4)} — stopping before another Claude call. Try narrowing the question.]`,
+        bullets: [],
+        citations: ["cost-cap"],
+      });
+      stopReason = "cost_cap";
+      break;
+    }
 
     stopReason = resp.stop_reason ?? "";
 
@@ -275,5 +329,8 @@ export async function runCopilotTurn(
     toolCalls,
     stopReason,
     iterations: iter + 1,
+    model,
+    costUsd: estimateTurnCostUsd(model, usage),
+    costCapHit: stopReason === "cost_cap",
   };
 }

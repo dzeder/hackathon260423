@@ -1,14 +1,18 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { listThreads, loadHistoryForDisplay } from "@/lib/copilotMemory";
+import {
+  listThreads,
+  loadHistoryForDisplay,
+  type Scope,
+} from "@/lib/copilotMemory";
 
 /*
  * Relevance-ranked cross-conversation recall.
  *
  * On each turn we pull the user's last N thread headers, ship a compact index
- * (title + first user question) to Haiku, and let Haiku return the ids of the
- * up-to-K threads whose prior analysis is most likely useful for the current
- * question. We then fetch those threads' final user/assistant exchange and
- * inline them into the system prompt as a "prior work" block.
+ * (title + id) to Haiku, and let Haiku return the ids of the up-to-K threads
+ * whose prior analysis is most likely useful for the current question. We then
+ * fetch those threads' final user/assistant exchange and inline them into the
+ * system prompt as a "prior work" block.
  *
  * Recency is a lousy proxy for relevance in this domain — a CFO asking about
  * a hurricane doesn't want to hear about last week's IRR analysis on new SKUs.
@@ -33,26 +37,23 @@ export type Recalled = {
   occurredAtMs: number;
 };
 
-// tiny in-process cache keyed on (userId, question) so rapid follow-ups don't
-// re-pay the Haiku round-trip
 const recallCache = new Map<string, { at: number; ids: string[] }>();
 
 export async function recallForUser(
-  userId: string,
+  scope: Scope,
   excludeConversationId: string | null,
   currentQuestion: string,
   cap = DEFAULT_CAP,
 ): Promise<Recalled[]> {
-  const threads = listThreads(userId, THREAD_INDEX_SIZE).filter(
+  const threads = (await listThreads(scope, THREAD_INDEX_SIZE)).filter(
     (t) => t.id !== excludeConversationId && t.messageCount >= 2,
   );
   if (threads.length === 0) return [];
 
-  // Try Haiku-backed relevance. Any failure falls back to recency.
   if (process.env.ANTHROPIC_API_KEY && currentQuestion.trim().length > 0) {
     try {
-      const ids = await pickRelevantThreadIds(userId, currentQuestion, threads, cap);
-      if (ids.length > 0) return materialize(ids);
+      const ids = await pickRelevantThreadIds(scope, currentQuestion, threads, cap);
+      if (ids.length > 0) return materialize(ids, scope);
     } catch (err) {
       console.warn(
         "copilotRecall: Haiku retriever failed, falling back to recency",
@@ -61,17 +62,19 @@ export async function recallForUser(
     }
   }
 
-  // Recency fallback: top `cap` most recent threads.
-  return materialize(threads.slice(0, cap).map((t) => t.id));
+  return materialize(
+    threads.slice(0, cap).map((t) => t.id),
+    scope,
+  );
 }
 
 async function pickRelevantThreadIds(
-  userId: string,
+  scope: Scope,
   question: string,
   threads: Array<{ id: string; title: string | null }>,
   cap: number,
 ): Promise<string[]> {
-  const cacheKey = `${userId}|${hash(question)}`;
+  const cacheKey = `${scope.customerId}|${scope.userId}|${hash(question)}`;
   const cached = recallCache.get(cacheKey);
   if (cached && Date.now() - cached.at < RECALL_CACHE_TTL_MS) return cached.ids;
 
@@ -109,10 +112,10 @@ async function pickRelevantThreadIds(
   return ids;
 }
 
-function materialize(ids: string[]): Recalled[] {
+async function materialize(ids: string[], scope: Scope): Promise<Recalled[]> {
   const out: Recalled[] = [];
   for (const id of ids) {
-    const msgs = loadHistoryForDisplay(id, 200);
+    const msgs = await loadHistoryForDisplay(id, scope, 200);
     if (msgs.length < 2) continue;
     let lastAssistant: (typeof msgs)[number] | null = null;
     let lastUser: (typeof msgs)[number] | null = null;
@@ -135,7 +138,6 @@ function materialize(ids: string[]): Recalled[] {
       occurredAtMs: lastAssistant.createdAt,
     });
   }
-  // newest-first for display stability
   out.sort((a, b) => b.occurredAtMs - a.occurredAtMs);
   return out;
 }
@@ -152,8 +154,6 @@ export function formatRecallForPrompt(items: Recalled[]): string | null {
   });
   return lines.join("\n");
 }
-
-// ---- helpers ----
 
 function extractJsonObject(raw: string): Record<string, unknown> | null {
   const start = raw.indexOf("{");
@@ -172,7 +172,6 @@ function trim(v: string, max: number): string {
 }
 
 function hash(s: string): string {
-  // deterministic short hash for the cache key — not security-sensitive
   let h = 0;
   for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
   return Math.abs(h).toString(36);

@@ -6,54 +6,77 @@ import { respond } from "@/lib/copilot";
 import { eventsCatalog } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
 import { runCopilotTurn } from "@/lib/copilotClaude";
+import { checkAuth } from "@/lib/copilotAuth";
 import {
   appendTurn,
+  getDailyUsage,
   getOrCreateActive,
+  incrementUsage,
   listThreads,
   loadHistoryAsApiMessages,
   loadHistoryForDisplay,
   startNewThread,
+  type Scope,
 } from "@/lib/copilotMemory";
 import { formatRecallForPrompt, recallForUser } from "@/lib/copilotRecall";
 
 export const runtime = "nodejs";
 
-// GET /api/copilot?userId=demo[&conversationId=...]
-//
-// Returns {conversationId, messages:[{id,role,text,createdAt}], threads:[...]}
-// Used by the LWC / CopilotPanel on mount to rehydrate the chat thread without
-// running a turn. If no conversationId is given we pick the user's most recent
-// (soft rollover).
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const userId = url.searchParams.get("userId") ?? "demo";
-  const startNew = url.searchParams.get("startNew") === "1";
-  let conversationId = url.searchParams.get("conversationId");
-  if (startNew) {
-    conversationId = startNewThread(userId);
-  } else if (!conversationId) {
-    conversationId = getOrCreateActive(userId);
-  }
-  const messages = loadHistoryForDisplay(conversationId, 100);
-  const threads = listThreads(userId, 15);
-  return NextResponse.json({ conversationId, messages, threads });
-}
-
 const Body = z.object({
   prompt: z.string().min(1).max(2000),
   scenarioId: z.string().min(1),
   appliedEventIds: z.array(z.string()).default([]),
-  // when absent, we use the user's most recent thread (soft rollover)
   conversationId: z.string().optional(),
-  // when true, start a fresh thread regardless of existing history
   newThread: z.boolean().optional(),
-  // Single-user demo — in prod this comes from the session
-  userId: z.string().default("demo"),
+  userId: z.string().optional(),
+  // Optional model override — useful for flagged-hard turns to use Opus.
+  model: z.string().optional(),
 });
 
 const MAX_HISTORY_FOR_REPLAY = 30;
 
+// Per-user-per-day hard cap. Configurable via env so different customers can
+// buy different ceilings without a code change.
+const MAX_TURNS_PER_DAY = Number(process.env.COPILOT_MAX_TURNS_PER_DAY ?? "200");
+const MAX_COST_USD_PER_DAY = Number(process.env.COPILOT_MAX_COST_USD_PER_DAY ?? "25");
+const MAX_COST_USD_PER_TURN = Number(process.env.COPILOT_MAX_COST_USD_PER_TURN ?? "0.30");
+
+function scopeFromRequest(userIdFromBody: string | undefined): Scope {
+  return {
+    customerId: process.env.SF_CUSTOMER_ID ?? "yellowhammer",
+    userId: userIdFromBody ?? "demo",
+  };
+}
+
+// GET /api/copilot?userId=...[&conversationId=...][&startNew=1]
+export async function GET(req: Request) {
+  const auth = checkAuth(req);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.reason }, { status: auth.status });
+  }
+  const url = new URL(req.url);
+  const userId = url.searchParams.get("userId") ?? "demo";
+  const scope = scopeFromRequest(userId);
+  const startNew = url.searchParams.get("startNew") === "1";
+  let conversationId = url.searchParams.get("conversationId");
+  if (startNew) {
+    conversationId = await startNewThread(scope);
+  } else if (!conversationId) {
+    conversationId = await getOrCreateActive(scope);
+  }
+  const [messages, threads] = await Promise.all([
+    loadHistoryForDisplay(conversationId, scope, 100),
+    listThreads(scope, 15),
+  ]);
+  return NextResponse.json({ conversationId, messages, threads });
+}
+
 export async function POST(req: Request) {
+  const auth = checkAuth(req);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.reason }, { status: auth.status });
+  }
+
   let parsed: z.infer<typeof Body>;
   try {
     parsed = Body.parse(await req.json());
@@ -64,28 +87,46 @@ export async function POST(req: Request) {
     );
   }
 
-  // Build the dynamic scenario context block — this is the scope the model
-  // needs to ground numbers for THIS scenario without a snapshot call.
+  const scope = scopeFromRequest(parsed.userId);
   const scenarioContext = buildScenarioContext(parsed);
 
-  // Conversation resolution — done up front so both the live and canned
-  // paths persist into SQLite and memory is visible even without an API key.
+  // Conversation resolution up front so all code paths share one id.
   let conversationId = parsed.conversationId ?? null;
   if (parsed.newThread || !conversationId) {
     conversationId = parsed.newThread
-      ? startNewThread(parsed.userId)
-      : getOrCreateActive(parsed.userId);
+      ? await startNewThread(scope)
+      : await getOrCreateActive(scope);
   }
 
-  // No API key -> canned response (still persisted so the thread UI works).
+  // Rate / cost guardrails.
+  const usage = await getDailyUsage(scope);
+  if (usage.turnCount >= MAX_TURNS_PER_DAY) {
+    return NextResponse.json(
+      {
+        error: "rate_limit_exceeded",
+        detail: `Daily turn cap reached (${MAX_TURNS_PER_DAY}). Resets 00:00 UTC.`,
+        conversationId,
+      },
+      { status: 429 },
+    );
+  }
+  if (usage.costUsd >= MAX_COST_USD_PER_DAY) {
+    return NextResponse.json(
+      {
+        error: "cost_cap_exceeded",
+        detail: `Daily spend cap reached ($${usage.costUsd.toFixed(2)} of $${MAX_COST_USD_PER_DAY.toFixed(2)}). Resets 00:00 UTC.`,
+        conversationId,
+      },
+      { status: 429 },
+    );
+  }
+
+  // No API key -> canned path (still persists so the thread UI shows continuity).
   if (!process.env.ANTHROPIC_API_KEY) {
     const canned = respondCanned(parsed);
     try {
-      appendTurn(conversationId, [
-        {
-          role: "user",
-          content: [{ type: "text", text: parsed.prompt }],
-        },
+      await appendTurn(conversationId, scope, [
+        { role: "user", content: [{ type: "text", text: parsed.prompt }] },
         {
           role: "assistant",
           content: [
@@ -106,40 +147,46 @@ export async function POST(req: Request) {
         persistErr instanceof Error ? persistErr.message : persistErr,
       );
     }
+    await incrementUsage(scope, 0);
     return NextResponse.json({ ...canned, source: "canned", conversationId });
   }
 
-  // Prior history (block form) + cross-conversation recall.
-  const priorHistory = loadHistoryAsApiMessages(conversationId, MAX_HISTORY_FOR_REPLAY);
+  // Live turn.
+  const priorHistory = await loadHistoryAsApiMessages(
+    conversationId,
+    scope,
+    MAX_HISTORY_FOR_REPLAY,
+  );
   let recallBlock: string | null = null;
   try {
-    const recalled = await recallForUser(parsed.userId, conversationId, parsed.prompt);
+    const recalled = await recallForUser(scope, conversationId, parsed.prompt);
     recallBlock = formatRecallForPrompt(recalled);
   } catch (err) {
     console.warn("copilot: recall failed", err instanceof Error ? err.message : err);
   }
 
   try {
-    const turn = await runCopilotTurn({
-      userText: parsed.prompt,
-      priorHistory,
-      recallBlock,
-      scenarioContext,
-    });
+    const turn = await runCopilotTurn(
+      {
+        userText: parsed.prompt,
+        priorHistory,
+        recallBlock,
+        scenarioContext,
+        model: parsed.model,
+      },
+      { maxCostUsd: MAX_COST_USD_PER_TURN },
+    );
 
-    // Persist the turn tail: new user turn + any tool iterations + final text.
     try {
-      appendTurn(conversationId, turn.newMessages);
+      await appendTurn(conversationId, scope, turn.newMessages);
     } catch (persistErr) {
       console.warn(
         "copilot: persist failed",
         persistErr instanceof Error ? persistErr.message : persistErr,
       );
     }
+    await incrementUsage(scope, turn.costUsd);
 
-    // Final assistant text is JSON per the system-prompt contract. Parse it
-    // into the CopilotResponse shape the UI expects. If parsing fails, wrap
-    // the raw text in a minimal shape so the UI still renders.
     const shaped = coerceCopilotShape(turn.finalText);
 
     return NextResponse.json({
@@ -153,6 +200,9 @@ export async function POST(req: Request) {
       })),
       usage: turn.usage,
       iterations: turn.iterations,
+      model: turn.model,
+      costUsd: turn.costUsd,
+      costCapHit: turn.costCapHit,
     });
   } catch (err) {
     console.warn(
@@ -252,7 +302,7 @@ function coerceCopilotShape(raw: string): CopilotShape {
         };
       }
     } catch {
-      // fall through to raw-text wrap
+      // fall through
     }
   }
   return { text: raw.trim(), bullets: [], citations: [] };
