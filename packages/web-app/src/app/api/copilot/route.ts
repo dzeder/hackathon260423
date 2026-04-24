@@ -5,6 +5,7 @@ import { applyEvents } from "@/lib/applyEvents";
 import { respond } from "@/lib/copilot";
 import { respondLive } from "@/lib/copilotLive";
 import { eventsCatalog } from "@/lib/eventsCatalog";
+import { log } from "@/lib/log";
 import { runThreeStatement } from "@/lib/threeStatement";
 import {
   formatToolsCalled,
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
     } catch (err) {
       const maybeTrace = (err as { trace?: ToolCallTrace }).trace;
       if (maybeTrace) traces.push(maybeTrace);
-      console.warn(
+      log.warn(
         "copilot: live call failed, falling back to canned",
         err instanceof Error ? err.message : err,
       );
