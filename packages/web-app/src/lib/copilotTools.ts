@@ -4,6 +4,12 @@ import { baselineForecast } from "@/data/baseline";
 import { applyEvents, type ScenarioEvent } from "@/lib/applyEvents";
 import { eventsCatalog, findEvent, type EventTemplate } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
+import {
+  isSalesforceConfigured,
+  querySoql,
+  validateSoqlOrThrow,
+} from "@/lib/salesforceClient";
+import { logError } from "@/lib/copilotLog";
 
 /*
  * Copilot tool registry.
@@ -165,20 +171,46 @@ async function suggestEventsHandler(raw: unknown) {
 
 async function querySalesforceHandler(raw: unknown) {
   const { soql } = QuerySalesforceInput.parse(raw);
-  // STUB: the demo org has no ohfy__ read endpoint wired yet. We return
-  // canned Yellowhammer fixtures that match the shapes a real SOQL query
-  // would produce for the most common wholesaler questions, so the copilot
-  // can practice citing live-like data. Wire-up plan:
-  //   - Option A: jsforce + connected-app OAuth from this Next.js server
-  //   - Option B: add a ReadSoql Apex REST endpoint + Named Credential
-  // Either way, the input contract (soql: string) stays the same.
+
+  // When the Connected App is wired up (SF_LOGIN_URL / SF_CONSUMER_KEY /
+  // SF_CONSUMER_SECRET all set), run the real SOQL against the org via
+  // OhfyPlanSoqlReader. Otherwise fall back to canned fixtures so the
+  // copilot demo still works without Salesforce credentials.
+  if (isSalesforceConfigured()) {
+    try {
+      // Defense-in-depth: validate on the web side before making the callout.
+      // Apex also validates server-side.
+      validateSoqlOrThrow(soql);
+      const result = await querySoql(soql);
+      return {
+        soql,
+        stubbed: false,
+        records: result.records,
+        rowCount: result.records.length,
+        totalSize: result.totalSize,
+      };
+    } catch (err) {
+      logError("salesforce_soql_failed", {
+        message: err instanceof Error ? err.message : "unknown",
+      });
+      return {
+        soql,
+        stubbed: false,
+        error: err instanceof Error ? err.message : "unknown",
+        records: [],
+        rowCount: 0,
+        note: "Live Salesforce query failed. See /api/health for status.",
+      };
+    }
+  }
+
   const canned = matchCanned(soql);
   return {
     soql,
     stubbed: true,
     records: canned.records,
     rowCount: canned.records.length,
-    note: canned.note,
+    note: `${canned.note} [SF not configured — set SF_LOGIN_URL/SF_CONSUMER_KEY/SF_CONSUMER_SECRET to enable live queries]`,
   };
 }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ensureMigrations, getDb } from "@/lib/copilotDb";
+import { isSalesforceConfigured } from "@/lib/salesforceClient";
 
 export const runtime = "nodejs";
 
@@ -41,6 +42,15 @@ export async function GET() {
   checks.gatewayAuth = {
     ok: hasSecret,
     detail: hasSecret ? undefined : "COPILOT_CLIENT_SECRET not set (dev mode only)",
+  };
+
+  // Salesforce is a soft dependency — degraded (not failed) when not wired.
+  // Copilot still works via canned SOQL fixtures.
+  checks.salesforce = {
+    ok: isSalesforceConfigured(),
+    detail: isSalesforceConfigured()
+      ? undefined
+      : "SF_LOGIN_URL / SF_CONSUMER_KEY / SF_CONSUMER_SECRET not set — query_salesforce returns canned fixtures",
   };
 
   const dbOk = checks.database?.ok === true;

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ApiMessage } from "@/lib/copilotMemory";
+import { withSpan } from "@/lib/copilotLog";
 import {
   dispatch,
   toAnthropicTools,
@@ -219,13 +220,23 @@ export async function runCopilotTurn(
   let iter = 0;
 
   for (iter = 0; iter < MAX_ITERATIONS; iter++) {
-    const resp = await client.messages.create({
-      model,
-      max_tokens: MAX_TOKENS,
-      system: systemBlocks as unknown as Anthropic.TextBlockParam[],
-      tools: toolSchemas as unknown as Anthropic.Tool[],
-      messages: apiMessages as unknown as Anthropic.MessageParam[],
-    });
+    const resp = await withSpan(
+      "copilot.claude.call",
+      {
+        model,
+        iteration: iter,
+        message_count: apiMessages.length,
+        tool_schema_count: toolSchemas.length,
+      },
+      () =>
+        client.messages.create({
+          model,
+          max_tokens: MAX_TOKENS,
+          system: systemBlocks as unknown as Anthropic.TextBlockParam[],
+          tools: toolSchemas as unknown as Anthropic.Tool[],
+          messages: apiMessages as unknown as Anthropic.MessageParam[],
+        }),
+    );
 
     // SDK 0.30.x types `usage` without the cache-token fields; they are
     // present in the actual JSON response since prompt caching went GA.
@@ -281,7 +292,11 @@ export async function runCopilotTurn(
       for (const block of resp.content) {
         if (block.type !== "tool_use") continue;
         const t0 = Date.now();
-        const result = await dispatch(block.name, block.input);
+        const result = await withSpan(
+          "copilot.tool.dispatch",
+          { "tool.name": block.name, "tool.use_id": block.id },
+          () => dispatch(block.name, block.input),
+        );
         const elapsed = Date.now() - t0;
         toolCalls.push({
           name: block.name,

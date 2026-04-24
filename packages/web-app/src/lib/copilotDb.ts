@@ -18,11 +18,26 @@ import { resolve } from "node:path";
 let _client: Client | null = null;
 let _migrationsAppliedPromise: Promise<void> | null = null;
 
+/**
+ * Returns true when conversation persistence is wired up (Turso URL set, OR
+ * local dev where the file fallback is writable). On a serverless platform
+ * like Vercel the filesystem is read-only outside /tmp, so without an
+ * explicit Turso URL we treat the DB as unavailable rather than blowing up
+ * with a write error mid-request.
+ */
+export function isPersistenceAvailable(): boolean {
+  if (process.env.TURSO_DATABASE_URL && process.env.TURSO_DATABASE_URL.length > 0) {
+    return true;
+  }
+  // On Vercel, VERCEL=1 and the deployment FS is read-only.
+  if (process.env.VERCEL === "1") return false;
+  // Local dev — file fallback is fine.
+  return true;
+}
+
 function resolveUrl(): string {
   const url = process.env.TURSO_DATABASE_URL;
   if (url && url.length > 0) return url;
-  // Dev fallback: local file beside the web-app so nothing configures poorly
-  // when someone just runs `npm run dev` for the first time.
   return "file:./data/copilot.db";
 }
 

@@ -7,6 +7,8 @@ import { eventsCatalog } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
 import { runCopilotTurn } from "@/lib/copilotClaude";
 import { checkAuth } from "@/lib/copilotAuth";
+import { isPersistenceAvailable } from "@/lib/copilotDb";
+import { logError, logTurn } from "@/lib/copilotLog";
 import {
   appendTurn,
   getDailyUsage,
@@ -57,6 +59,18 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const userId = url.searchParams.get("userId") ?? "demo";
   const scope = scopeFromRequest(userId);
+
+  // When persistence isn't wired, return an empty thread so the UI still
+  // renders — the conversation just won't survive reloads.
+  if (!isPersistenceAvailable()) {
+    return NextResponse.json({
+      conversationId: "transient",
+      messages: [],
+      threads: [],
+      persistence: "disabled",
+    });
+  }
+
   const startNew = url.searchParams.get("startNew") === "1";
   let conversationId = url.searchParams.get("conversationId");
   if (startNew) {
@@ -72,6 +86,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const startMs = Date.now();
   const auth = checkAuth(req);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.reason }, { status: auth.status });
@@ -89,17 +104,25 @@ export async function POST(req: Request) {
 
   const scope = scopeFromRequest(parsed.userId);
   const scenarioContext = buildScenarioContext(parsed);
+  const persistenceOn = isPersistenceAvailable();
 
   // Conversation resolution up front so all code paths share one id.
   let conversationId = parsed.conversationId ?? null;
-  if (parsed.newThread || !conversationId) {
-    conversationId = parsed.newThread
-      ? await startNewThread(scope)
-      : await getOrCreateActive(scope);
+  if (persistenceOn) {
+    if (parsed.newThread || !conversationId) {
+      conversationId = parsed.newThread
+        ? await startNewThread(scope)
+        : await getOrCreateActive(scope);
+    }
+  } else {
+    conversationId = conversationId ?? "transient";
   }
 
-  // Rate / cost guardrails.
-  const usage = await getDailyUsage(scope);
+  // Rate / cost guardrails. Skipped when persistence is off — the counter
+  // lives in the DB.
+  const usage = persistenceOn
+    ? await getDailyUsage(scope)
+    : { turnCount: 0, costUsd: 0 };
   if (usage.turnCount >= MAX_TURNS_PER_DAY) {
     return NextResponse.json(
       {
@@ -121,48 +144,52 @@ export async function POST(req: Request) {
     );
   }
 
-  // No API key -> canned path (still persists so the thread UI shows continuity).
+  // No API key -> canned path. Persists when the DB is wired up so the
+  // thread UI shows continuity; on serverless-without-Turso, turns are
+  // stateless but the UI still renders.
   if (!process.env.ANTHROPIC_API_KEY) {
     const canned = respondCanned(parsed);
-    try {
-      await appendTurn(conversationId, scope, [
-        { role: "user", content: [{ type: "text", text: parsed.prompt }] },
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                text: canned.text,
-                bullets: canned.bullets,
-                citations: canned.citations,
-              }),
-            },
-          ],
-        },
-      ]);
-    } catch (persistErr) {
-      console.warn(
-        "copilot: canned persist failed",
-        persistErr instanceof Error ? persistErr.message : persistErr,
-      );
+    if (persistenceOn) {
+      try {
+        await appendTurn(conversationId, scope, [
+          { role: "user", content: [{ type: "text", text: parsed.prompt }] },
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  text: canned.text,
+                  bullets: canned.bullets,
+                  citations: canned.citations,
+                }),
+              },
+            ],
+          },
+        ]);
+        await incrementUsage(scope, 0);
+      } catch (persistErr) {
+        console.warn(
+          "copilot: canned persist failed",
+          persistErr instanceof Error ? persistErr.message : persistErr,
+        );
+      }
     }
-    await incrementUsage(scope, 0);
     return NextResponse.json({ ...canned, source: "canned", conversationId });
   }
 
   // Live turn.
-  const priorHistory = await loadHistoryAsApiMessages(
-    conversationId,
-    scope,
-    MAX_HISTORY_FOR_REPLAY,
-  );
+  const priorHistory = persistenceOn
+    ? await loadHistoryAsApiMessages(conversationId, scope, MAX_HISTORY_FOR_REPLAY)
+    : [];
   let recallBlock: string | null = null;
-  try {
-    const recalled = await recallForUser(scope, conversationId, parsed.prompt);
-    recallBlock = formatRecallForPrompt(recalled);
-  } catch (err) {
-    console.warn("copilot: recall failed", err instanceof Error ? err.message : err);
+  if (persistenceOn) {
+    try {
+      const recalled = await recallForUser(scope, conversationId, parsed.prompt);
+      recallBlock = formatRecallForPrompt(recalled);
+    } catch (err) {
+      console.warn("copilot: recall failed", err instanceof Error ? err.message : err);
+    }
   }
 
   try {
@@ -177,17 +204,37 @@ export async function POST(req: Request) {
       { maxCostUsd: MAX_COST_USD_PER_TURN },
     );
 
-    try {
-      await appendTurn(conversationId, scope, turn.newMessages);
-    } catch (persistErr) {
-      console.warn(
-        "copilot: persist failed",
-        persistErr instanceof Error ? persistErr.message : persistErr,
-      );
+    if (persistenceOn) {
+      try {
+        await appendTurn(conversationId, scope, turn.newMessages);
+        await incrementUsage(scope, turn.costUsd);
+      } catch (persistErr) {
+        console.warn(
+          "copilot: persist failed",
+          persistErr instanceof Error ? persistErr.message : persistErr,
+        );
+      }
     }
-    await incrementUsage(scope, turn.costUsd);
 
     const shaped = coerceCopilotShape(turn.finalText);
+
+    logTurn({
+      customerId: scope.customerId,
+      userId: scope.userId,
+      conversationId,
+      model: turn.model,
+      iterations: turn.iterations,
+      stopReason: turn.stopReason,
+      inputTokens: turn.usage.inputTokens,
+      outputTokens: turn.usage.outputTokens,
+      cacheReadTokens: turn.usage.cacheReadTokens,
+      cacheCreationTokens: turn.usage.cacheCreationTokens,
+      costUsd: turn.costUsd,
+      costCapHit: turn.costCapHit,
+      toolNames: turn.toolCalls.map((c) => c.name),
+      latencyMs: Date.now() - startMs,
+      source: "live",
+    });
 
     return NextResponse.json({
       ...shaped,
@@ -205,10 +252,11 @@ export async function POST(req: Request) {
       costCapHit: turn.costCapHit,
     });
   } catch (err) {
-    console.warn(
-      "copilot: live turn failed, falling back to canned",
-      err instanceof Error ? err.message : err,
-    );
+    logError("copilot_live_turn_failed", {
+      customer_id_hash_input: scope.customerId,
+      conversation_id: conversationId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
     const canned = respondCanned(parsed);
     return NextResponse.json({
       ...canned,
