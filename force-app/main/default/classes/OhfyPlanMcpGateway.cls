@@ -53,6 +53,9 @@ public with sharing class OhfyPlanMcpGateway {
         if (!ALLOWED_TOOLS.contains(toolName)) {
             throw new AuraHandledException('toolName not allow-listed: ' + toolName);
         }
+        if (!OhfyPlanAgentConfig.isEnabled(toolName, UserInfo.getOrganizationId())) {
+            throw new AuraHandledException('tool is disabled by Plan_Agent_Config__mdt: ' + toolName);
+        }
         HttpRequest req = buildRequest(toolName, payload);
         try {
             HttpResponse res = new Http().send(req);
