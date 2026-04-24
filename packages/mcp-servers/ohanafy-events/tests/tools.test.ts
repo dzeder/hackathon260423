@@ -7,8 +7,9 @@ import {
 } from "../src/tools.js";
 
 describe("ohanafy-events tool handlers", () => {
-  it("exposes the three expected tools", () => {
+  it("exposes the four expected tools", () => {
     expect(Object.keys(TOOL_REGISTRY).sort()).toEqual([
+      "classify_scenario",
       "get_event",
       "search_events",
       "suggest_events",
