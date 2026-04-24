@@ -5,6 +5,7 @@ import { applyEvents } from "@/lib/applyEvents";
 import { respond } from "@/lib/copilot";
 import { respondLive } from "@/lib/copilotLive";
 import { eventsCatalog } from "@/lib/eventsCatalog";
+import { METRICS, recordLatency } from "@/lib/metrics";
 import { runThreeStatement } from "@/lib/threeStatement";
 import { PROMPT_VERSION, TOOL_SCHEMA_VERSION } from "@/lib/versions";
 
@@ -17,6 +18,7 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
+  const startMs = performance.now();
   let parsed: z.infer<typeof Body>;
   try {
     const raw = await req.json();
@@ -48,10 +50,14 @@ export async function POST(req: Request) {
     toolSchemaVersion: TOOL_SCHEMA_VERSION,
   };
 
+  let source: "live" | "canned" = "canned";
+  let body: Record<string, unknown> = { ...respond(query), source: "canned", ...versions };
+
   if (process.env.ANTHROPIC_API_KEY) {
     try {
       const live = await respondLive(query);
-      return NextResponse.json({ ...live, source: "live", ...versions });
+      body = { ...live, source: "live", ...versions };
+      source = "live";
     } catch (err) {
       console.warn(
         "copilot: live call failed, falling back to canned",
@@ -60,5 +66,8 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ...respond(query), source: "canned", ...versions });
+  recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
+    `source:${source}`,
+  ]);
+  return NextResponse.json(body);
 }

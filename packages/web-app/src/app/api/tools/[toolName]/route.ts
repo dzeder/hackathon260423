@@ -4,6 +4,7 @@ import { baselineForecast } from "@/data/baseline";
 import { getRateLimit, isToolEnabled } from "@/lib/agentConfig";
 import { applyEvents } from "@/lib/applyEvents";
 import { eventsCatalog } from "@/lib/eventsCatalog";
+import { METRICS, incrementCounter } from "@/lib/metrics";
 import { consume } from "@/lib/rateLimit";
 import { runThreeStatement } from "@/lib/threeStatement";
 
@@ -38,6 +39,7 @@ export async function POST(
 ) {
   const toolName = params.toolName;
   if (!isToolEnabled(toolName)) {
+    incrementCounter(METRICS.TOOL_DISABLED, [`tool:${toolName}`]);
     return NextResponse.json(
       { error: `tool is disabled: ${toolName}` },
       { status: 503 },
@@ -50,6 +52,7 @@ export async function POST(
   const customerId = req.headers.get("x-customer-id")?.trim() || "anonymous";
   const decision = consume(customerId, toolName, getRateLimit(toolName));
   if (!decision.allowed) {
+    incrementCounter(METRICS.TOOL_RATE_LIMIT, [`tool:${toolName}`]);
     return NextResponse.json(
       { error: `rate limit exceeded for ${toolName}`, retryAfterSec: decision.retryAfterSec },
       { status: 429, headers: { "Retry-After": String(decision.retryAfterSec ?? 60) } },
