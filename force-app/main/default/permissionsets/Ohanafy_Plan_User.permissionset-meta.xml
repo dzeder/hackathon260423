@@ -12,6 +12,14 @@
         <apexClass>OhfyPlanAgentLogWriter</apexClass>
         <enabled>true</enabled>
     </classAccesses>
+    <classAccesses>
+        <apexClass>OhfyPlanAgentConfig</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <classAccesses>
+        <apexClass>OhfyPlanAgentConfigApi</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
     <description>Grants access to the Ohanafy Plan app, its tab, and the MCP gateway Apex class.</description>
     <fieldPermissions>
         <editable>false</editable>
