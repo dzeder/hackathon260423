@@ -6,6 +6,7 @@ import { respond } from "@/lib/copilot";
 import { respondLive } from "@/lib/copilotLive";
 import { eventsCatalog } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
+import { PROMPT_VERSION, TOOL_SCHEMA_VERSION } from "@/lib/versions";
 
 export const runtime = "nodejs";
 
@@ -42,10 +43,15 @@ export async function POST(req: Request) {
     threeStatement,
   };
 
+  const versions = {
+    promptVersion: PROMPT_VERSION,
+    toolSchemaVersion: TOOL_SCHEMA_VERSION,
+  };
+
   if (process.env.ANTHROPIC_API_KEY) {
     try {
       const live = await respondLive(query);
-      return NextResponse.json({ ...live, source: "live" });
+      return NextResponse.json({ ...live, source: "live", ...versions });
     } catch (err) {
       console.warn(
         "copilot: live call failed, falling back to canned",
@@ -54,5 +60,5 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ...respond(query), source: "canned" });
+  return NextResponse.json({ ...respond(query), source: "canned", ...versions });
 }
