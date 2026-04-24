@@ -2,14 +2,19 @@ import { z } from "zod";
 import { loadPeerSignals } from "./fixtures.js";
 import { getCategoryTrend, queryPeerSignals } from "./logic.js";
 
+/** Every tool call must identify which customer org the request is for. */
+export const CustomerContextSchema = z.object({
+  customerId: z.string().min(1, "customerId is required"),
+});
+
 const WindowEnum = z.enum(["4w", "13w", "ytd"]);
 
-export const QueryPeerSignalsInput = z.object({
+export const QueryPeerSignalsInput = CustomerContextSchema.extend({
   segmentId: z.string().optional(),
   window: WindowEnum.default("13w"),
 });
 
-export const GetCategoryTrendInput = z.object({
+export const GetCategoryTrendInput = CustomerContextSchema.extend({
   skuFamily: z.string().min(1),
   window: WindowEnum.default("13w"),
 });

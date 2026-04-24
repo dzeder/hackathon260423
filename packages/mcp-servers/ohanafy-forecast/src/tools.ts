@@ -2,6 +2,11 @@ import { z } from "zod";
 import { loadBaseline } from "./baseline.js";
 import { applyEvents, runThreeStatement, snapshotScenario } from "./logic.js";
 
+/** Every tool call must identify which customer org the request is for. */
+export const CustomerContextSchema = z.object({
+  customerId: z.string().min(1, "customerId is required"),
+});
+
 export const ScenarioEventSchema = z.object({
   id: z.string(),
   label: z.string().optional(),
@@ -11,17 +16,17 @@ export const ScenarioEventSchema = z.object({
   opexDeltaAbs: z.number().optional(),
 });
 
-export const ApplyEventInput = z.object({
+export const ApplyEventInput = CustomerContextSchema.extend({
   scenarioId: z.string().min(1),
   events: z.array(ScenarioEventSchema).min(1),
 });
 
-export const RunThreeStatementInput = z.object({
+export const RunThreeStatementInput = CustomerContextSchema.extend({
   scenarioId: z.string().min(1),
   events: z.array(ScenarioEventSchema).default([]),
 });
 
-export const SnapshotInput = z.object({
+export const SnapshotInput = CustomerContextSchema.extend({
   scenarioId: z.string().min(1),
   events: z.array(ScenarioEventSchema).default([]),
 });
