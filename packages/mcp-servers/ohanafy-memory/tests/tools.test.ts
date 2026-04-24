@@ -18,11 +18,12 @@ function freshStore() {
 const TENANT = "cust-yellowhammer";
 
 describe("ohanafy-memory tool handlers", () => {
-  it("exposes the three expected tools", () => {
+  it("exposes the four expected tools", () => {
     expect(Object.keys(TOOL_REGISTRY).sort()).toEqual([
       "compare_scenarios",
       "list_decisions",
       "record_decision",
+      "search_knowledge",
     ]);
   });
 
