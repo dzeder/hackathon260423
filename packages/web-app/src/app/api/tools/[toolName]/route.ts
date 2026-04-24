@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { baselineForecast } from "@/data/baseline";
-import { isToolEnabled } from "@/lib/agentConfig";
+import { getRateLimit, isToolEnabled } from "@/lib/agentConfig";
 import { applyEvents } from "@/lib/applyEvents";
 import { CustomerIdError, extractCustomerId, hashCustomerId } from "@/lib/customerId";
 import { eventsCatalog } from "@/lib/eventsCatalog";
+import { consume } from "@/lib/rateLimit";
 import { runThreeStatement } from "@/lib/threeStatement";
 
 export const runtime = "nodejs";
@@ -54,6 +55,15 @@ export async function POST(
       return NextResponse.json({ error: err.message }, { status: 400 });
     }
     throw err;
+  }
+
+  // Rate-limit gate keyed on the extracted tenant id.
+  const decision = consume(customerId, toolName, getRateLimit(toolName));
+  if (!decision.allowed) {
+    return NextResponse.json(
+      { error: `rate limit exceeded for ${toolName}`, retryAfterSec: decision.retryAfterSec },
+      { status: 429, headers: { "Retry-After": String(decision.retryAfterSec ?? 60) } },
+    );
   }
 
   let bodyRaw: Record<string, unknown>;
