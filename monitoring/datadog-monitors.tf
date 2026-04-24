@@ -73,6 +73,13 @@ resource "datadog_monitor" "copilot_cost_median" {
     critical = 0.05
   }
 
+  # The cost_usd metric is declared but not yet emitted (depends on the
+  # end-of-Phase-1 auth sub-task that wires the agent log write). Without
+  # this guard the monitor would page on "no data" continuously. Flip to
+  # true once emission is live.
+  notify_no_data    = false
+  no_data_timeframe = 60
+
   tags = ["service:ohanafy-plan-webapp", "slo:cost", "env:prod"]
 }
 
