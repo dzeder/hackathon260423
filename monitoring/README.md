@@ -46,6 +46,9 @@ terraform -chdir=monitoring apply ...
 - `copilot.cost_usd` emission is reserved but not yet wired; it depends
   on the web-app ↔ Salesforce log-write path (end-of-Phase-1 auth
   sub-task). Once that ships, cost per call is derivable from the log
-  row and will be emitted from `/api/copilot/route.ts`.
+  row and will be emitted from `/api/copilot/route.ts`. Until then the
+  `copilot_cost_median` monitor has `notify_no_data = false` to avoid
+  continuous "no data" alerts — flip it back to `true` once emission
+  is live.
 - `SF_AUTH_URL`-backed Datadog monitor on Apex test failures — separate
   PR once the CI pipeline for `apex-tests` settles.
