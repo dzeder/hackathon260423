@@ -6,6 +6,7 @@ import { respond } from "@/lib/copilot";
 import { respondLive } from "@/lib/copilotLive";
 import { eventsCatalog } from "@/lib/eventsCatalog";
 import { log } from "@/lib/log";
+import { METRICS, recordLatency } from "@/lib/metrics";
 import { runThreeStatement } from "@/lib/threeStatement";
 import {
   formatToolsCalled,
@@ -23,6 +24,7 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
+  const startMs = performance.now();
   let parsed: z.infer<typeof Body>;
   try {
     const raw = await req.json();
@@ -66,6 +68,9 @@ export async function POST(req: Request) {
     toolSchemaVersion: TOOL_SCHEMA_VERSION,
   };
 
+  let source: "live" | "canned" = "canned";
+  let body: Record<string, unknown>;
+
   if (process.env.ANTHROPIC_API_KEY) {
     try {
       const { result: live, trace: liveTrace } = await recordTrace(
@@ -74,13 +79,18 @@ export async function POST(req: Request) {
         { input: { prompt: parsed.prompt, scenarioId: parsed.scenarioId } },
       );
       traces.push(liveTrace);
-      return NextResponse.json({
+      body = {
         ...live,
         source: "live",
         traces,
         toolsCalled: formatToolsCalled(traces),
         ...versions,
-      });
+      };
+      source = "live";
+      recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
+        `source:${source}`,
+      ]);
+      return NextResponse.json(body);
     } catch (err) {
       const maybeTrace = (err as { trace?: ToolCallTrace }).trace;
       if (maybeTrace) traces.push(maybeTrace);
@@ -97,11 +107,15 @@ export async function POST(req: Request) {
     { input: { prompt: parsed.prompt, scenarioId: parsed.scenarioId } },
   );
   traces.push(cannedTrace);
-  return NextResponse.json({
+  body = {
     ...canned,
     source: "canned",
     traces,
     toolsCalled: formatToolsCalled(traces),
     ...versions,
-  });
+  };
+  recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
+    `source:${source}`,
+  ]);
+  return NextResponse.json(body);
 }
