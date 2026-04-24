@@ -1,0 +1,75 @@
+{
+  "tenant": "yellowhammer",
+  "entries": [
+    {
+      "id": "yellowhammer-profile",
+      "title": "Yellowhammer Beverage — customer profile",
+      "body": "Yellowhammer Beverage is a beer + Red Bull wholesaler headquartered in Birmingham, Alabama. Routes cover the Birmingham, Tuscaloosa, Huntsville, and Mobile metros. Primary channels: chain (Walmart, Target, Publix), independent grocery, on-premise (bars + restaurants), and convenience. Cases are the primary volume unit; bbl references are legacy. Peak demand runs through football season (Aug–Nov) and spring/summer tailgating (Mar–Sep).",
+      "source": "§11 HACKATHON-BUILD-OS",
+      "tags": ["profile", "customer", "yellowhammer", "alabama"]
+    },
+    {
+      "id": "hurricane-playbook",
+      "title": "Hurricane impact playbook (Gulf-reaching landfall)",
+      "body": "A Cat 2+ hurricane crossing the Gulf-to-Alabama corridor typically pulls water + beer demand forward 7–10 days pre-landfall (+15–25% volume in coastal routes), followed by a 2–3 week depression as power outages suppress on-premise trade. Net 8-week revenue impact: -3% to -8% for the affected region. Supplier lead times extend by 5–14 days because AB InBev + Constellation warehouses route around Mobile. On-premise recovery trails chain recovery by ~2 weeks.",
+      "source": "NOAA historical tracks + Yellowhammer Q3 2024 post-mortem",
+      "tags": ["hurricane", "weather", "playbook", "gulf"]
+    },
+    {
+      "id": "sec-football-weekend",
+      "title": "SEC football home-game effect on demand",
+      "body": "Each home game in Tuscaloosa or Auburn drives +9–11% week-over-week revenue on beer + energy drinks for the metro, concentrated in the 72 hours before kickoff. Effect is strongest for rivalry games (Iron Bowl, Tennessee). Incremental volume skews to cases of Bud Light, Michelob Ultra, and Red Bull 12oz. Opex lifts modestly (+$2–4k per game) from expedited delivery windows. Away games show ~1/3 the effect; bye weeks show no lift.",
+      "source": "CFBD schedule + internal uplift analysis",
+      "tags": ["sports", "football", "sec", "iron-bowl", "alabama"]
+    },
+    {
+      "id": "ab-supplier-exclusivity",
+      "title": "Anheuser-Busch supplier relationship",
+      "body": "Yellowhammer holds AB InBev territorial rights across north Alabama; exclusivity is annual and renews each January 1. Loss of exclusivity would remove ~42% of beer volume and ~38% of beer revenue over the following 6 months, partially offset by non-AB brand acquisition (typical recovery: 18–24 months). Scenario planning should treat an AB loss as a structural event, not a single-quarter bump.",
+      "source": "Yellowhammer supplier MSA + CFO briefing 2025-Q4",
+      "tags": ["supplier", "ab-inbev", "risk", "exclusivity"]
+    },
+    {
+      "id": "memorial-day-lift",
+      "title": "Memorial Day weekend demand pattern",
+      "body": "Memorial Day weekend drives a +18–22% revenue lift across chain + independent channels in the 10 days leading up to the holiday, concentrated in light beer, seltzers, and energy drinks. Chain programs close by early May; depletion cascade peaks the Monday before. On-premise lift is smaller (+6–9%) and lives almost entirely in tourism-heavy Gulf routes (Orange Beach, Gulf Shores).",
+      "source": "Internal 2024 + 2025 holiday analysis",
+      "tags": ["holiday", "memorial-day", "seasonal"]
+    },
+    {
+      "id": "thc-beverage-category",
+      "title": "Hemp-derived THC beverage launch economics",
+      "body": "Hemp-derived THC beverages are legal in Alabama under the 2018 Farm Bill; Yellowhammer has not yet carried them. Category ASP runs $28–36 per 6-pack, margin 40–48% (vs beer margin ~30%). Launch ramp typically hits 60% of steady-state by month 4 and plateaus by month 9. Risk: state legislative action could restrict the category in any given session; model with a 20% probability-of-discontinuation haircut on lifetime value.",
+      "source": "Brewer's Journal 2025 category brief + legal memo",
+      "tags": ["category", "thc", "new-sku", "regulatory"]
+    },
+    {
+      "id": "wholesaler-glossary",
+      "title": "Wholesaler terminology reference",
+      "body": "Depletion: sales from the wholesaler into retail (the leading indicator the supplier cares about). STW (Supplier-to-Wholesaler): shipments from the brewery into our warehouse. Chain program: a multi-month promotional plan agreed with a chain retailer (e.g. Walmart). CDA: Category Development Agreement. Route: a delivery territory assigned to a single driver/truck. Pick-pack: warehouse activity. On-premise / off-premise / chain / independent are the four primary channel buckets.",
+      "source": "§18 HACKATHON-BUILD-OS",
+      "tags": ["glossary", "terminology", "reference"]
+    },
+    {
+      "id": "diesel-price-sensitivity",
+      "title": "Diesel price sensitivity on opex",
+      "body": "Yellowhammer opex is roughly 7% diesel-linked (route fleet + inbound freight surcharges). Every +$0.50/gal move in EIA retail diesel price translates to +$14k–18k per quarter in opex. Price spikes are typically absorbed rather than passed through; margin compresses by ~60 bps per $0.50 move until next chain program cycle resets pricing.",
+      "source": "EIA retail diesel + internal opex reconciliation",
+      "tags": ["diesel", "opex", "eia", "macro"]
+    },
+    {
+      "id": "red-bull-seasonality",
+      "title": "Red Bull seasonality and chain programs",
+      "body": "Red Bull volume is relatively flat year-round (CV ~8%) compared to beer (~22%). The biggest lifts are tied to SEC football tailgating (see sec-football-weekend) and NASCAR weekends at Talladega (2 per year, +14–18% weekly lift in the Birmingham metro). Chain programs negotiated directly with Red Bull include quarterly volume commitments; missing a commitment triggers a rebate clawback in the next quarter.",
+      "source": "Red Bull NA program letter 2026",
+      "tags": ["red-bull", "seasonality", "chain-program"]
+    },
+    {
+      "id": "gas-price-consumer-signal",
+      "title": "Gas price as a leading consumer-confidence signal",
+      "body": "Regional retail gas prices crossing $4/gal sustained for 2+ weeks correlate with a 3–5% soft-demand pullback in off-premise beer (consumers trade down from premium to domestic light) and a smaller 1–2% lift in value-pack volume. On-premise is less sensitive. Watch the $4.50/gal threshold as a harder break point.",
+      "source": "EIA weekly retail gas + internal POS panel",
+      "tags": ["gas-price", "macro", "consumer"]
+    }
+  ]
+}

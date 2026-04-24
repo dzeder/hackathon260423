@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { loadKnowledge, searchKnowledge } from "./knowledge.js";
 import {
   compareScenarios,
   filterDecisions,
@@ -34,6 +35,11 @@ export const ListDecisionsInput = z.object({
 export const CompareScenariosInput = z.object({
   a: ScenarioSummarySchema,
   b: ScenarioSummarySchema,
+});
+
+export const SearchKnowledgeInput = z.object({
+  query: z.string().min(1).max(500),
+  limit: z.number().int().positive().max(20).default(3),
 });
 
 type Deps = { store: MemoryStore };
@@ -80,6 +86,12 @@ export async function compareScenariosTool(raw: unknown) {
   return defaults.compareScenariosTool(raw);
 }
 
+export async function searchKnowledgeTool(raw: unknown) {
+  const { query, limit } = SearchKnowledgeInput.parse(raw);
+  const hits = searchKnowledge(loadKnowledge(), query, limit);
+  return { hits, count: hits.length };
+}
+
 export const TOOL_REGISTRY = {
   record_decision: {
     description: "Append a CFO/analyst note to a scenario's decision log.",
@@ -95,6 +107,11 @@ export const TOOL_REGISTRY = {
     description: "Compare two scenario summaries and report abs + pct deltas plus a verdict on EBITDA.",
     input: CompareScenariosInput,
     handler: compareScenariosTool,
+  },
+  search_knowledge: {
+    description: "Search the Yellowhammer knowledge base (customer profile, domain playbooks, glossary) by free-text query. BM25-lite scoring over title + body + tags.",
+    input: SearchKnowledgeInput,
+    handler: searchKnowledgeTool,
   },
 } as const;
 
