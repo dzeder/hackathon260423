@@ -2,21 +2,26 @@ import { z } from "zod";
 import { loadCatalog } from "./catalog.js";
 import { getEvent, searchEvents, suggestEvents } from "./logic.js";
 
+/** Every tool call must identify which customer org the request is for. */
+export const CustomerContextSchema = z.object({
+  customerId: z.string().min(1, "customerId is required"),
+});
+
 const CategoryEnum = z.enum(["sports", "weather", "holiday", "macro", "supplier"]);
 const SeasonEnum = z.enum(["spring", "summer", "fall", "winter", "any"]);
 
-export const SearchEventsInput = z.object({
+export const SearchEventsInput = CustomerContextSchema.extend({
   query: z.string().optional(),
   region: z.string().optional(),
   season: SeasonEnum.optional(),
   category: CategoryEnum.optional(),
 });
 
-export const GetEventInput = z.object({
+export const GetEventInput = CustomerContextSchema.extend({
   id: z.string().min(1),
 });
 
-export const SuggestEventsInput = z.object({
+export const SuggestEventsInput = CustomerContextSchema.extend({
   months: z.array(z.string().regex(/^\d{4}-\d{2}$/)).min(1),
   avgRevenue: z.number().nonnegative(),
   region: z.string().optional(),

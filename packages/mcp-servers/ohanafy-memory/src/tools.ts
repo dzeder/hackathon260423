@@ -7,6 +7,11 @@ import {
 } from "./logic.js";
 import { sharedStore, MemoryStore } from "./store.js";
 
+/** Every tool call must identify which customer org the request is for. */
+export const CustomerContextSchema = z.object({
+  customerId: z.string().min(1, "customerId is required"),
+});
+
 const TotalsSchema = z.object({
   revenue: z.number(),
   cogs: z.number(),
@@ -20,18 +25,18 @@ const ScenarioSummarySchema = z.object({
   totals: TotalsSchema,
 });
 
-export const RecordDecisionInput = z.object({
+export const RecordDecisionInput = CustomerContextSchema.extend({
   scenarioId: z.string().min(1),
   note: z.string().min(1).max(4000),
   author: z.string().optional(),
   tags: z.array(z.string()).default([]),
 });
 
-export const ListDecisionsInput = z.object({
+export const ListDecisionsInput = CustomerContextSchema.extend({
   scenarioId: z.string().min(1),
 });
 
-export const CompareScenariosInput = z.object({
+export const CompareScenariosInput = CustomerContextSchema.extend({
   a: ScenarioSummarySchema,
   b: ScenarioSummarySchema,
 });

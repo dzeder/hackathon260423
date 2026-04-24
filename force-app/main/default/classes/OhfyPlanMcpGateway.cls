@@ -30,6 +30,9 @@ public with sharing class OhfyPlanMcpGateway {
         req.setMethod('POST');
         req.setHeader('Content-Type', 'application/json');
         req.setHeader('Accept', 'application/json');
+        // Tenancy header — the web-app requires this on every /api/tools/* call.
+        // When we migrate to External Credentials, this can move to the NC config.
+        req.setHeader('x-customer-id', UserInfo.getOrganizationId());
         req.setTimeout(TIMEOUT_MS);
         req.setBody(String.isBlank(payload) ? '{}' : payload);
         return req;
@@ -108,6 +111,7 @@ public with sharing class OhfyPlanMcpGateway {
         req.setMethod('POST');
         req.setHeader('Content-Type', 'application/json');
         req.setHeader('Accept', 'application/json');
+        req.setHeader('x-customer-id', UserInfo.getOrganizationId());
         req.setTimeout(TIMEOUT_MS);
         req.setBody(JSON.serialize(body));
         try {
