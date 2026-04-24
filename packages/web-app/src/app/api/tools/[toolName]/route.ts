@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { baselineForecast } from "@/data/baseline";
+import { isToolEnabled } from "@/lib/agentConfig";
 import { applyEvents } from "@/lib/applyEvents";
 import { eventsCatalog } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
@@ -35,6 +36,12 @@ export async function POST(
   { params }: { params: { toolName: string } },
 ) {
   const toolName = params.toolName;
+  if (!isToolEnabled(toolName)) {
+    return NextResponse.json(
+      { error: `tool is disabled: ${toolName}` },
+      { status: 503 },
+    );
+  }
   let body: unknown;
   try {
     body = await req.json();
