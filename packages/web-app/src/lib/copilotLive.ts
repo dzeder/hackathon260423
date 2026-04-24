@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { CircuitBreaker } from "@/lib/circuitBreaker";
+import { CircuitBreaker, CircuitOpenError } from "@/lib/circuitBreaker";
 import type { CopilotQuery, CopilotResponse } from "@/lib/copilot";
 import { findEvent } from "@/lib/eventsCatalog";
+import { METRICS, incrementCounter } from "@/lib/metrics";
 
 const MODEL = "claude-opus-4-7";
 const MAX_TOKENS = 700;
@@ -112,19 +113,27 @@ export async function respondLive(q: CopilotQuery): Promise<CopilotResponse> {
     assertAnthropicKey();
     const client = new Anthropic({ timeout: TIMEOUT_MS });
     const context = buildContext(q);
-    const msg = await anthropicBreaker.exec(() =>
-        client.messages.create({
-            model: MODEL,
-            max_tokens: MAX_TOKENS,
-            system: SYSTEM_PROMPT,
-            messages: [
-                {
-                    role: "user",
-                    content: `${context}\n\nQUESTION: ${q.prompt}`,
-                },
-            ],
-        }),
-    );
+    let msg;
+    try {
+        msg = await anthropicBreaker.exec(() =>
+            client.messages.create({
+                model: MODEL,
+                max_tokens: MAX_TOKENS,
+                system: SYSTEM_PROMPT,
+                messages: [
+                    {
+                        role: "user",
+                        content: `${context}\n\nQUESTION: ${q.prompt}`,
+                    },
+                ],
+            }),
+        );
+    } catch (err) {
+        if (err instanceof CircuitOpenError) {
+            incrementCounter(METRICS.TOOL_CIRCUIT_OPEN, ["tool:anthropic"]);
+        }
+        throw err;
+    }
     const textBlock = msg.content.find((b) => b.type === "text");
     if (!textBlock || textBlock.type !== "text") {
         throw new Error("live copilot returned no text block");
