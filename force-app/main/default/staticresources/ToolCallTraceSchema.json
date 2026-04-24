@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ohanafy.com/schemas/tool-call-trace/1.0",
+  "title": "ToolCallTrace",
+  "description": "One element per tool invocation the Ohanafy Plan agent makes during a copilot call. The canonical TypeScript source is packages/web-app/src/lib/toolCallTrace.ts — keep in sync when SCHEMA_VERSION bumps.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["schemaVersion", "tool", "startedAt", "durationMs", "ok"],
+    "additionalProperties": false,
+    "properties": {
+      "schemaVersion": {
+        "type": "string",
+        "const": "1.0",
+        "description": "Embedded in every trace. Breaking changes bump this value."
+      },
+      "tool": {
+        "type": "string",
+        "minLength": 1,
+        "description": "snake_case tool name, e.g. apply_events, query_baseline, respond_live."
+      },
+      "startedAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "durationMs": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "ok": {
+        "type": "boolean"
+      },
+      "errorCode": {
+        "type": "string",
+        "description": "Populated only when ok=false."
+      },
+      "inputHash": {
+        "type": "string",
+        "description": "Truncated SHA-256 of canonicalized input; for correlation without logging the raw value."
+      },
+      "outputTokens": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "LLM output tokens; only set for tools that call an LLM."
+      }
+    }
+  }
+}

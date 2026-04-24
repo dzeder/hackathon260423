@@ -6,6 +6,11 @@ import { respond } from "@/lib/copilot";
 import { respondLive } from "@/lib/copilotLive";
 import { eventsCatalog } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
+import {
+  formatToolsCalled,
+  recordTrace,
+  type ToolCallTrace,
+} from "@/lib/toolCallTrace";
 import { PROMPT_VERSION, TOOL_SCHEMA_VERSION } from "@/lib/versions";
 
 export const runtime = "nodejs";
@@ -28,11 +33,23 @@ export async function POST(req: Request) {
     );
   }
 
+  const traces: ToolCallTrace[] = [];
+
   const appliedEvents = eventsCatalog.filter((e) =>
     parsed.appliedEventIds.includes(e.id),
   );
-  const scenario = applyEvents(baselineForecast, appliedEvents);
-  const threeStatement = runThreeStatement(scenario);
+  const { result: scenario, trace: applyTrace } = await recordTrace(
+    "apply_events",
+    () => applyEvents(baselineForecast, appliedEvents),
+    { input: { eventIds: parsed.appliedEventIds } },
+  );
+  traces.push(applyTrace);
+
+  const { result: threeStatement, trace: tsTrace } = await recordTrace(
+    "run_three_statement",
+    () => runThreeStatement(scenario),
+  );
+  traces.push(tsTrace);
 
   const query = {
     prompt: parsed.prompt,
@@ -50,9 +67,22 @@ export async function POST(req: Request) {
 
   if (process.env.ANTHROPIC_API_KEY) {
     try {
-      const live = await respondLive(query);
-      return NextResponse.json({ ...live, source: "live", ...versions });
+      const { result: live, trace: liveTrace } = await recordTrace(
+        "respond_live",
+        () => respondLive(query),
+        { input: { prompt: parsed.prompt, scenarioId: parsed.scenarioId } },
+      );
+      traces.push(liveTrace);
+      return NextResponse.json({
+        ...live,
+        source: "live",
+        traces,
+        toolsCalled: formatToolsCalled(traces),
+        ...versions,
+      });
     } catch (err) {
+      const maybeTrace = (err as { trace?: ToolCallTrace }).trace;
+      if (maybeTrace) traces.push(maybeTrace);
       console.warn(
         "copilot: live call failed, falling back to canned",
         err instanceof Error ? err.message : err,
@@ -60,5 +90,17 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ...respond(query), source: "canned", ...versions });
+  const { result: canned, trace: cannedTrace } = await recordTrace(
+    "respond_canned",
+    () => respond(query),
+    { input: { prompt: parsed.prompt, scenarioId: parsed.scenarioId } },
+  );
+  traces.push(cannedTrace);
+  return NextResponse.json({
+    ...canned,
+    source: "canned",
+    traces,
+    toolsCalled: formatToolsCalled(traces),
+    ...versions,
+  });
 }
