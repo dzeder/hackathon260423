@@ -6,6 +6,26 @@ const MODEL = "claude-opus-4-7";
 const MAX_TOKENS = 700;
 const TIMEOUT_MS = 15000;
 
+/**
+ * Fail fast with a generic message that never includes the key value.
+ * Errors from this function are safe to log verbatim.
+ */
+function assertAnthropicKey(): void {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key || key.trim().length === 0) {
+    throw new AnthropicKeyMissingError(
+      "ANTHROPIC_API_KEY is not set — route through canned fallback or configure the Vercel env var.",
+    );
+  }
+}
+
+export class AnthropicKeyMissingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AnthropicKeyMissingError";
+  }
+}
+
 function totals(months: CopilotQuery["baseline"]) {
     return months.reduce(
         (acc, m) => ({
@@ -77,6 +97,7 @@ function isCopilotResponse(v: unknown): v is CopilotResponse {
 }
 
 export async function respondLive(q: CopilotQuery): Promise<CopilotResponse> {
+    assertAnthropicKey();
     const client = new Anthropic({ timeout: TIMEOUT_MS });
     const context = buildContext(q);
     const msg = await client.messages.create({
