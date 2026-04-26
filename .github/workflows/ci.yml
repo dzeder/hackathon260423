@@ -2,7 +2,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [master]
 
 permissions:
   contents: read
@@ -99,26 +99,52 @@ jobs:
     # branch protection + (optionally) required reviewer. See README §Secrets.
     environment: hackathon-deploy
     needs: lint-and-types
-    if: |
-      github.event_name == 'pull_request' &&
-      contains(join(github.event.pull_request.labels.*.name, ','), 'track-c') ||
-      github.event_name == 'push'
+    # Run on any PR or push; the job self-skips when (a) the SF_AUTH_URL
+    # secret is missing or (b) no Apex / metadata files changed. We avoid a
+    # label-based gate because labels are easy to forget and the bind-test
+    # work in OhfyPlanMemoryStore must not regress silently.
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Need full history so the origin/master diff below works.
+          fetch-depth: 0
       - name: Check if Apex tests should run
         id: should_run
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
           if [ -z "${{ secrets.SF_AUTH_URL }}" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "SF_AUTH_URL secret missing — skipping Apex tests (not a CI failure)."
             exit 0
           fi
-          CHANGED=$(git diff --name-only origin/main...HEAD -- force-app/ packages/sfdx-package/ 2>/dev/null | head -n1 || echo "")
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            # PR: diff the branch against the merge base on the target.
+            REF="${BASE_REF:-master}"
+            git fetch --no-tags --depth=1 origin "$REF" 2>/dev/null || true
+            DIFF_RANGE="origin/${REF}...HEAD"
+          else
+            # Push: diff the new tip against the SHA before the push. If
+            # `before` is the zero SHA (first push to a new branch / force
+            # push) fall back to running (better than missing real changes).
+            if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              echo "Push without a 'before' SHA — running Apex tests defensively."
+              exit 0
+            fi
+            DIFF_RANGE="${BEFORE_SHA}..HEAD"
+          fi
+          CHANGED=$(git diff --name-only "$DIFF_RANGE" -- \
+            force-app/ packages/sfdx-package/ 2>/dev/null | head -n1 || echo "")
           if [ -z "$CHANGED" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "No Track C files changed — skipping Apex tests."
+            echo "No Apex / SFDX files changed in $DIFF_RANGE — skipping."
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Apex / SFDX changes detected — will run RunLocalTests."
           fi
       - name: Install Salesforce CLI
         if: steps.should_run.outputs.skip == 'false'
@@ -132,13 +158,16 @@ jobs:
           sf org login sfdx-url --sfdx-url-file sfdx_auth.txt \
             --alias ohanafy-hack-sandbox --set-default
           rm -f sfdx_auth.txt
-      - name: Run Apex tests
+      - name: Deploy + run Apex tests (RunLocalTests, 75% coverage bar)
         if: steps.should_run.outputs.skip == 'false'
         run: |
           sf project deploy start \
             --source-dir force-app \
             --target-org ohanafy-hack-sandbox \
             --test-level RunLocalTests
+      - name: Apex tests skipped — note for log
+        if: steps.should_run.outputs.skip == 'true'
+        run: echo "::notice::Apex tests skipped — see step log for reason."
 
   dd-ci-event:
     name: Datadog CI event
