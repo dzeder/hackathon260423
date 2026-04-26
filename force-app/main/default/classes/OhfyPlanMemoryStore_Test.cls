@@ -192,6 +192,53 @@ private class OhfyPlanMemoryStore_Test {
     }
 
     @isTest
+    static void bind_rejects_when_request_customer_does_not_match_org() {
+        OhfyPlanMemoryStore.boundCustomerIdOverride = 'cust-A';
+        try {
+            Map<String, Object> env = invokeMap(new Map<String, Object>{
+                'action' => 'startNewThread',
+                'customerId' => 'cust-B',
+                'userId' => USER_A
+            });
+            Assert.areEqual(false, env.get('ok'));
+            Assert.isTrue(((String) env.get('error')).contains('does not match'));
+        } finally {
+            OhfyPlanMemoryStore.boundCustomerIdOverride = null;
+        }
+    }
+
+    @isTest
+    static void bind_allows_when_request_customer_matches_org() {
+        OhfyPlanMemoryStore.boundCustomerIdOverride = 'cust-A';
+        try {
+            Map<String, Object> env = invokeMap(new Map<String, Object>{
+                'action' => 'startNewThread',
+                'customerId' => 'cust-A',
+                'userId' => USER_A
+            });
+            Assert.areEqual(true, env.get('ok'));
+            Assert.isNotNull(dataOf(env).get('conversationId'));
+        } finally {
+            OhfyPlanMemoryStore.boundCustomerIdOverride = null;
+        }
+    }
+
+    @isTest
+    static void bind_skipped_when_no_customer_configured() {
+        // boundCustomerIdOverride defaults to null and the deployed
+        // Default record has Customer_Id__c blank, so the bind check is a
+        // no-op. Existing tests verify this path; this just guards against
+        // a regression that would silently turn the bind on for everyone.
+        OhfyPlanMemoryStore.boundCustomerIdOverride = null;
+        Map<String, Object> env = invokeMap(new Map<String, Object>{
+            'action' => 'startNewThread',
+            'customerId' => CUSTOMER,
+            'userId' => USER_A
+        });
+        Assert.areEqual(true, env.get('ok'));
+    }
+
+    @isTest
     static void extractTextFromBlocksJson_pullsTextOnly() {
         String json = '[{"type":"text","text":"hello"},{"type":"tool_use","id":"x","name":"y","input":{}}]';
         Assert.areEqual('hello', OhfyPlanMemoryStore.extractTextFromBlocksJson(json));

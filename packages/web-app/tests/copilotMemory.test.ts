@@ -249,6 +249,56 @@ describe("copilotMemory (Salesforce-backed)", () => {
     ).rejects.toThrow(/appendTurn failed: bad payload/);
   });
 
+  // Cross-customer isolation: every memory operation must thread the scope's
+  // customerId through to the Apex side. A regression here (e.g. a refactor
+  // that drops the field, or a hard-coded fallback) would let one customer's
+  // Vercel process write into another customer's bucket.
+  describe("cross-customer isolation", () => {
+    it("every operation embeds scope.customerId in the Apex payload", async () => {
+      const otherScope: Scope = { customerId: "cust-other", userId: "user-9" };
+      mockedCall.mockResolvedValue({ ok: true, data: { conversationId: "c", inserted: 0, threads: [], messages: [], turnCount: 0, costUsd: 0 } });
+
+      await startNewThread(otherScope);
+      await getOrCreateActive(otherScope);
+      await listThreads(otherScope, 10);
+      await loadHistory("c1", otherScope);
+      await appendTurn("c1", otherScope, [{ role: "user", content: "hi" }]);
+      await getDailyUsage(otherScope);
+      await incrementUsage(otherScope, 0.01);
+
+      const everyCallCarriesCustomerId = mockedCall.mock.calls.every((call) => {
+        const payload = call[1] as Record<string, unknown>;
+        return payload.customerId === "cust-other";
+      });
+      expect(everyCallCarriesCustomerId).toBe(true);
+    });
+
+    it("surfaces the Apex bind-rejection error to the caller", async () => {
+      // Simulates OhfyPlanMemoryStore rejecting a request because the
+      // configured Customer_Id__c does not match what the web app sent.
+      mockedCall.mockResolvedValue({
+        ok: false,
+        error: "customerId does not match this org's bound customer",
+      });
+      await expect(
+        appendTurn("c1", scope, [{ role: "user", content: "leak" }]),
+      ).rejects.toThrow(/does not match/);
+    });
+
+    it("never silently substitutes a default customerId on a missing scope field", async () => {
+      // Defense against a regression where someone defaults customerId in
+      // copilotMemory. The Scope type makes customerId required, so the
+      // call should propagate whatever (even an empty string) was given.
+      mockedCall.mockResolvedValue({ ok: true, data: { conversationId: "c" } });
+      const blankScope = { customerId: "", userId: "u" } as Scope;
+      await startNewThread(blankScope);
+      const sent = mockedCall.mock.calls[0][1] as Record<string, unknown>;
+      expect(sent.customerId).toBe("");
+      // The Apex side then enforces the non-blank check; this test guards
+      // the web-app contract that we never invent an id.
+    });
+  });
+
   it("getDailyUsage / incrementUsage hit the right actions", async () => {
     mockedCall.mockResolvedValueOnce({
       ok: true,

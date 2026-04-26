@@ -1,5 +1,9 @@
-import { describe, it, expect } from "vitest";
-import { estimateTurnCostUsd } from "@/lib/copilotClaude";
+import { afterEach, beforeEach, describe, it, expect } from "vitest";
+import {
+  _resetCopilotPersonaCache,
+  estimateTurnCostUsd,
+  getCopilotPersona,
+} from "@/lib/copilotClaude";
 
 describe("estimateTurnCostUsd", () => {
   it("Sonnet: input billed at $3/MTok, output at $15/MTok", () => {
@@ -68,5 +72,54 @@ describe("estimateTurnCostUsd", () => {
       cacheCreationTokens: 0,
     });
     expect(cost).toBeCloseTo(3.0, 2);
+  });
+});
+
+describe("getCopilotPersona", () => {
+  let originalPersona: string | undefined;
+
+  beforeEach(() => {
+    originalPersona = process.env.COPILOT_PERSONA;
+    _resetCopilotPersonaCache();
+  });
+
+  afterEach(() => {
+    if (originalPersona === undefined) {
+      delete process.env.COPILOT_PERSONA;
+    } else {
+      process.env.COPILOT_PERSONA = originalPersona;
+    }
+    _resetCopilotPersonaCache();
+  });
+
+  it("returns a customer-agnostic default when COPILOT_PERSONA is unset", () => {
+    delete process.env.COPILOT_PERSONA;
+    const persona = getCopilotPersona();
+    expect(persona).not.toMatch(/yellowhammer/i);
+    expect(persona).not.toMatch(/birmingham/i);
+    expect(persona).toMatch(/Ohanafy Plan copilot/);
+    expect(persona).toMatch(/CFO/);
+  });
+
+  it("returns the COPILOT_PERSONA env value when set", () => {
+    process.env.COPILOT_PERSONA =
+      "You are the Ohanafy Plan copilot for Acme Wines — a Napa wholesaler.";
+    const persona = getCopilotPersona();
+    expect(persona).toContain("Acme Wines");
+    expect(persona).toContain("Napa");
+  });
+
+  it("treats an empty/whitespace COPILOT_PERSONA as unset", () => {
+    process.env.COPILOT_PERSONA = "   ";
+    const persona = getCopilotPersona();
+    expect(persona).toMatch(/Ohanafy Plan copilot/);
+  });
+
+  it("memoizes per-process so cache_control still hits across turns", () => {
+    process.env.COPILOT_PERSONA = "first";
+    expect(getCopilotPersona()).toBe("first");
+    process.env.COPILOT_PERSONA = "second";
+    // Same process, no reset — should still return the first value.
+    expect(getCopilotPersona()).toBe("first");
   });
 });

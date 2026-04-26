@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { CircuitBreaker, CircuitOpenError } from "@/lib/circuitBreaker";
 import type { CopilotQuery, CopilotResponse } from "@/lib/copilot";
+import { getCopilotPersona } from "@/lib/copilotClaude";
 import { findEvent } from "@/lib/eventsCatalog";
 import { METRICS, incrementCounter } from "@/lib/metrics";
 
@@ -78,13 +79,15 @@ function buildContext(q: CopilotQuery): string {
     ].join("\n");
 }
 
-const SYSTEM_PROMPT = [
-    "You are the Ohanafy Plan copilot for Yellowhammer Beverage, a beer + Red Bull wholesaler in Birmingham, AL.",
-    "The audience is a CFO. Be concise (≤3 sentences of prose + 3–5 bullets), numeric, and ground every claim in the scenario context below.",
-    "Never invent numbers the context does not contain. Never use emojis.",
-    "Cite sources when relevant using short labels (e.g., 'CFBD college football calendar', 'NOAA hurricane track', 'EIA diesel prices', '§11 Yellowhammer profile', 'three-statement model').",
-    'Respond ONLY with a JSON object of shape: {"text": string, "bullets": string[], "citations": string[]}. No prose outside the JSON.',
-].join(" ");
+function buildSystemPrompt(): string {
+    return [
+        getCopilotPersona(),
+        "The audience is a CFO. Be concise (≤3 sentences of prose + 3–5 bullets), numeric, and ground every claim in the scenario context below.",
+        "Never invent numbers the context does not contain. Never use emojis.",
+        "Cite sources when relevant using short labels (e.g., 'CFBD college football calendar', 'NOAA hurricane track', 'EIA diesel prices', 'three-statement model').",
+        'Respond ONLY with a JSON object of shape: {"text": string, "bullets": string[], "citations": string[]}. No prose outside the JSON.',
+    ].join(" ");
+}
 
 function extractJson(raw: string): unknown {
     const start = raw.indexOf("{");
@@ -119,7 +122,7 @@ export async function respondLive(q: CopilotQuery): Promise<CopilotResponse> {
             client.messages.create({
                 model: MODEL,
                 max_tokens: MAX_TOKENS,
-                system: SYSTEM_PROMPT,
+                system: buildSystemPrompt(),
                 messages: [
                     {
                         role: "user",
