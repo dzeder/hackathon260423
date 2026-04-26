@@ -1,35 +1,25 @@
 import { NextResponse } from "next/server";
-import { ensureMigrations, getDb } from "@/lib/copilotDb";
 import { isSalesforceConfigured } from "@/lib/salesforceClient";
 
 export const runtime = "nodejs";
 
 /*
- * Liveness + readiness probe for Datadog synthetic checks and Vercel.
+ * Liveness + readiness probe for Datadog synthetics and Vercel.
  *
  * Checks:
- *   - Turso ping (is the DB reachable)
- *   - ANTHROPIC_API_KEY presence (is Claude configured)
- *   - COPILOT_CLIENT_SECRET presence (is gateway auth configured)
+ *   - anthropic     ANTHROPIC_API_KEY present (live Claude responses)
+ *   - gatewayAuth   COPILOT_CLIENT_SECRET present (rejects anonymous traffic)
+ *   - salesforce    SF_LOGIN_URL/SF_CONSUMER_KEY/SF_CONSUMER_SECRET present
+ *                   (live SOQL + conversation memory in the customer org)
  *
- * Returns 200 if all critical checks pass, 503 otherwise. The JSON body
- * lists each check's status so the check can alert on "degraded" state
- * (e.g. DB up but Anthropic key missing) without flapping.
+ * Status 200 when ALL checks pass — including Salesforce, since memory now
+ * lives there. Status 503 if any critical config is missing. Without
+ * Salesforce, the copilot still serves stateless Claude responses, but the
+ * "feels continuous" promise is broken; we want this surfaced loudly.
  */
 
 export async function GET() {
   const checks: Record<string, { ok: boolean; detail?: string }> = {};
-
-  try {
-    await ensureMigrations();
-    await getDb().execute("SELECT 1");
-    checks.database = { ok: true };
-  } catch (err) {
-    checks.database = {
-      ok: false,
-      detail: err instanceof Error ? err.message : "db unreachable",
-    };
-  }
 
   checks.anthropic = {
     ok: Boolean(process.env.ANTHROPIC_API_KEY),
@@ -44,22 +34,19 @@ export async function GET() {
     detail: hasSecret ? undefined : "COPILOT_CLIENT_SECRET not set (dev mode only)",
   };
 
-  // Salesforce is a soft dependency — degraded (not failed) when not wired.
-  // Copilot still works via canned SOQL fixtures.
   checks.salesforce = {
     ok: isSalesforceConfigured(),
     detail: isSalesforceConfigured()
       ? undefined
-      : "SF_LOGIN_URL / SF_CONSUMER_KEY / SF_CONSUMER_SECRET not set — query_salesforce returns canned fixtures",
+      : "SF_LOGIN_URL/SF_CONSUMER_KEY/SF_CONSUMER_SECRET not set — copilot will run stateless (no memory, canned SOQL)",
   };
 
-  const dbOk = checks.database?.ok === true;
-  const anthropicOk = checks.anthropic.ok;
-  const status = dbOk && anthropicOk ? 200 : 503;
+  const allOk = checks.anthropic.ok && checks.gatewayAuth.ok && checks.salesforce.ok;
+  const status = allOk ? 200 : 503;
 
   return NextResponse.json(
     {
-      status: status === 200 ? "ok" : "degraded",
+      status: allOk ? "ok" : "degraded",
       checks,
       version: process.env.VERCEL_GIT_COMMIT_SHA ?? "local",
       timestamp: new Date().toISOString(),

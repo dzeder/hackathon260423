@@ -1,6 +1,6 @@
 # Copilot Production Runbook
 
-Operational guide for the Ohanafy Plan copilot stack on Vercel + Turso + Salesforce.
+Operational guide for the Ohanafy Plan copilot stack on Vercel + Salesforce.
 
 ## Architecture at a glance
 
@@ -19,33 +19,61 @@ Operational guide for the Ohanafy Plan copilot stack on Vercel + Turso + Salesfo
                                                  │  │  Messages  │  Haiku 4.5 retriever
                                                  │  └────────────┘
                                                  │
-                                                 │  ┌────────────┐
-                                                 ├─▶│   Turso    │  conversations,
-                                                 │  │   libSQL   │  messages, usage
-                                                 │  └────────────┘
+                                                 │  OAuth client_credentials  ┌───────────────┐
+                                                 ├─/services/apexrest/plan/───▶│ Salesforce    │
+                                                 │   memory  (CRUD)            │ • Plan_Conv__c│
+                                                 │   soql    (read-only)       │ • Plan_Msg__c │
+                                                 │                             │ • Plan_Usage__c│
+                                                 │                             │ • SOQL targets│
+                                                 │                             └───────────────┘
                                                  │
-                                                 │  OAuth client_credentials
-                                                 ▼  ↓
+                                                 ▼
                                           ┌────────────────────┐
-                                          │  Salesforce Org    │
-                                          │  /services/apexrest│
-                                          │     /plan/soql     │
+                                          │ pino → Datadog     │
+                                          │ (PII redacted)     │
                                           └────────────────────┘
 ```
 
+**Memory lives inside the customer's Salesforce org.** The web app is a pure
+compute layer — no separate database, no separate vendor for conversation
+data. The customer's existing audit, retention, GDPR, and backup tools work
+on copilot data because it's just custom-object rows.
+
 ## One-time setup
 
-### 1. Turso database
+### 1. Salesforce Connected App
 
-```bash
-turso db create ohanafy-copilot-<customer>
-turso db show --url ohanafy-copilot-<customer>   # → TURSO_DATABASE_URL
-turso db tokens create ohanafy-copilot-<customer> # → TURSO_AUTH_TOKEN
-```
+Setup → App Manager → New Connected App:
 
-Replicas: Turso replicates globally by default. For US-East customers on Vercel (IAD region), no config needed.
+- **Name**: `Ohanafy Plan Copilot`
+- **Contact Email**: your ops email
+- **Enable OAuth Settings**: yes
+- **Callback URL**: `https://login.salesforce.com/services/oauth2/callback` (unused for client_credentials but required)
+- **Selected OAuth Scopes**:
+  - `Manage user data via APIs (api)`
+  - `Perform requests at any time (refresh_token, offline_access)`
+- **Enable Client Credentials Flow**: yes
+- **Run As**: a dedicated **integration user** with the permission set described in step 2
 
-### 2. Shared secret between Salesforce and Vercel
+After save, wait ~5 min for OAuth to propagate, then grab **Consumer Key** and **Consumer Secret**. These go into Vercel as `SF_CONSUMER_KEY` and `SF_CONSUMER_SECRET`.
+
+### 2. Permission set for the integration user
+
+The Run-As user must have:
+
+| Object | Read | Create | Edit |
+|---|---|---|---|
+| `Plan_Conversation__c` | ✓ | ✓ | ✓ |
+| `Plan_Message__c` | ✓ | ✓ | ✓ |
+| `Plan_Usage_Daily__c` | ✓ | ✓ | ✓ |
+| `Account`, `Contact`, `Opportunity`, `Order`, `User` | ✓ | — | — |
+| `ohfy__*` (managed package) | ✓ | — | — |
+
+Apex class access:
+- `OhfyPlanMemoryStore`
+- `OhfyPlanSoqlReader`
+
+### 3. Shared secret between Salesforce and Vercel
 
 ```bash
 openssl rand -hex 32
@@ -54,56 +82,35 @@ openssl rand -hex 32
 Paste the output in BOTH places:
 
 - **Vercel** → Project → Settings → Environment Variables → add `COPILOT_CLIENT_SECRET` for Production and Preview scopes.
-- **Salesforce** → Setup → Custom Metadata Types → Ohanafy Copilot Config → Default record → Client Secret field.
-
-Deploy the Custom Metadata record change with the rest of force-app.
-
-### 3. Salesforce Connected App (for live SOQL)
-
-Setup → App Manager → New Connected App:
-
-- **Name**: `Ohanafy Plan Copilot SOQL`
-- **Contact Email**: your ops email
-- **Enable OAuth Settings**: yes
-- **Callback URL**: `https://login.salesforce.com/services/oauth2/callback` (unused for client_credentials but required)
-- **Selected OAuth Scopes**: `Manage user data via APIs (api)`, `Perform requests at any time (refresh_token, offline_access)`
-- **Enable Client Credentials Flow**: yes
-- **Run As**: a dedicated integration user (Profile: Read-only, scoped via Permission Set to the objects in `OhfyPlanSoqlReader.ALLOWED_OBJECTS`)
-
-After save, wait ~5 min for OAuth to propagate, then grab **Consumer Key** and **Consumer Secret**.
-
-Paste into Vercel env:
-
-- `SF_LOGIN_URL` = `https://<my-domain>.my.salesforce.com`
-- `SF_CONSUMER_KEY` = <consumer key>
-- `SF_CONSUMER_SECRET` = <consumer secret>
+- **Salesforce** → Setup → Custom Metadata Types → Ohanafy Copilot Config → Default record → Client Secret field. Deploy.
 
 ### 4. Vercel environment variables (full list)
 
-| Variable | Required | Scope |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | yes | Production + Preview |
-| `TURSO_DATABASE_URL` | yes (prod) | Production + Preview |
-| `TURSO_AUTH_TOKEN` | yes (prod) | Production + Preview |
-| `COPILOT_CLIENT_SECRET` | yes | Production + Preview |
-| `SF_CUSTOMER_ID` | yes | Production + Preview |
-| `SF_LOGIN_URL` | for live SOQL | Production + Preview |
-| `SF_CONSUMER_KEY` | for live SOQL | Production + Preview |
-| `SF_CONSUMER_SECRET` | for live SOQL | Production + Preview |
-| `DD_API_KEY` | for tracing | Production |
-| `DD_ENV` | for tracing | Production |
-| `COPILOT_MAX_TURNS_PER_DAY` | optional (default 200) | Production |
-| `COPILOT_MAX_COST_USD_PER_DAY` | optional (default 25) | Production |
-| `COPILOT_MAX_COST_USD_PER_TURN` | optional (default 0.30) | Production |
+| Variable | Required? | Scope | Purpose |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | yes | Prod + Preview | Live Claude responses |
+| `COPILOT_CLIENT_SECRET` | yes | Prod + Preview | Auth between SF gateway and `/api/copilot` |
+| `SF_LOGIN_URL` | yes | Prod + Preview | `https://<my-domain>.my.salesforce.com` |
+| `SF_CONSUMER_KEY` | yes | Prod + Preview | Connected App consumer key |
+| `SF_CONSUMER_SECRET` | yes | Prod + Preview | Connected App consumer secret |
+| `SF_CUSTOMER_ID` | yes | Prod + Preview | Tenant label on every memory row |
+| `DD_API_KEY` | optional | Prod | Datadog APM tracing |
+| `DD_ENV` | optional | Prod | `production`, `staging`, etc. |
+| `COPILOT_MAX_TURNS_PER_DAY` | optional | Prod | Daily turn cap (default 200) |
+| `COPILOT_MAX_COST_USD_PER_DAY` | optional | Prod | Daily $ cap (default 25) |
+| `COPILOT_MAX_COST_USD_PER_TURN` | optional | Prod | Per-turn $ cap (default 0.30) |
+
+**Without the SF vars**: copilot serves stateless live Claude responses. No memory, no rate-limit, no usage counter, `query_salesforce` returns canned. Health check reports `salesforce: ok=false`.
 
 ### 5. Deploy
 
 ```bash
-# Web app (first deploy + every push to prod branch)
+# Web app
 cd packages/web-app
 vercel deploy --prod --yes
 
-# Salesforce
+# Salesforce — one push installs everything: 3 memory objects + 2 Apex REST
+# endpoints + Custom Metadata + LWC + permission sets.
 cd ../..
 sf project deploy start --source-dir force-app -o <org-alias>
 sf apex run test --test-level RunLocalTests -o <org-alias>
@@ -117,29 +124,26 @@ sf apex run test --test-level RunLocalTests -o <org-alias>
 {
   "status": "ok",
   "checks": {
-    "database":    { "ok": true },
     "anthropic":   { "ok": true },
     "gatewayAuth": { "ok": true },
     "salesforce":  { "ok": true }
   },
   "version": "<git-sha>",
-  "timestamp": "2026-04-24T..."
+  "timestamp": "..."
 }
 ```
 
-Status 200 = all critical checks pass. Status 503 = database or anthropic unavailable. `salesforce: ok=false` is **degraded, not failed** — copilot still serves from canned SOQL fixtures.
-
-Wire a Datadog synthetic: GET `/api/health` every 5 min, alert on 503 or no response.
+Status 200 = all critical checks pass. Status 503 = any of the three is missing. Wire a Datadog synthetic: GET `/api/health` every 5 min, alert on 503 or no response.
 
 ## Operations
 
 ### Rotating the shared secret (zero-downtime)
 
 1. Generate new secret: `openssl rand -hex 32`.
-2. **Vercel**: add the new value to `COPILOT_CLIENT_SECRETS` (plural, comma-separated: `<new>,<old>`). Redeploy.
-3. **Salesforce**: update the `Ohanafy_Copilot_Config__mdt.Default.Client_Secret__c` record to the new value. Deploy.
-4. Wait 10 min for Salesforce callouts to settle on the new header.
-5. **Vercel**: set `COPILOT_CLIENT_SECRET` to just the new value. Remove `COPILOT_CLIENT_SECRETS`. Redeploy.
+2. **Vercel**: add new value to `COPILOT_CLIENT_SECRETS` (plural, comma-separated: `<new>,<old>`). Redeploy.
+3. **Salesforce**: update `Ohanafy_Copilot_Config__mdt.Default.Client_Secret__c` to the new value. Deploy.
+4. Wait 10 min for SF callouts to settle.
+5. **Vercel**: set `COPILOT_CLIENT_SECRET` to the new value alone. Remove `COPILOT_CLIENT_SECRETS`. Redeploy.
 
 ### Rotating the Anthropic API key
 
@@ -147,51 +151,64 @@ Wire a Datadog synthetic: GET `/api/health` every 5 min, alert on 503 or no resp
 2. Update Vercel `ANTHROPIC_API_KEY`. Redeploy.
 3. Revoke the old key.
 
-If the old key ever appears in a git commit — not caught by gitleaks — rotate **immediately** and log in `DECISION_LOG.md` per `CLAUDE.md`'s no-silent-pivots rule.
+### Rotating the Salesforce Consumer Secret
 
-### Rotating Salesforce Consumer Secret
-
-1. Salesforce → App Manager → Ohanafy Plan Copilot SOQL → Manage → Edit → New Consumer Secret.
+1. Salesforce → App Manager → Ohanafy Plan Copilot → Manage → Edit → New Consumer Secret.
 2. Update Vercel `SF_CONSUMER_SECRET`. Redeploy.
 
-The in-process token cache will refresh on next cold start. If you need an immediate refresh, bounce the Vercel function (deploy a dummy commit or use `vercel redeploy`).
-
-### Running a migration
-
-Schema changes live in `packages/web-app/migrations/*.sql`. Naming convention: `NNN_description.sql` with 3-digit zero-padded sequence.
-
-Applied automatically on first request after deploy. Tracked in the `_migrations` table. Never edit a shipped migration — append a new one.
-
-To run ad hoc against Turso:
-
-```bash
-turso db shell ohanafy-copilot-<customer> < packages/web-app/migrations/002_new.sql
-```
+In-process token cache refreshes on next cold start. Force a refresh by re-deploying or calling `vercel redeploy`.
 
 ### Rolling back
 
-- **Vercel**: Settings → Deployments → find the last good deploy → `Promote to Production`.
-- **Salesforce**: revert commit locally, redeploy. Apex supports metadata rollback via `sf project deploy start --source-dir <older-version>`.
-- **Turso**: point-in-time restore via `turso db restore`.
+- **Vercel**: Settings → Deployments → find the last good deploy → "Promote to Production".
+- **Salesforce**: revert commit, redeploy. For destructive changes (object deletions) restore from a sandbox or backup.
+- **Conversation data**: lives in `Plan_Conversation__c` / `Plan_Message__c`. Customer admins can use Salesforce data export, recycle bin, or weekly export for recovery.
 
-### Triage: copilot returning errors
+### Triage — copilot returning errors
 
-1. Open the deployment's **Function Logs** in Vercel (every `logTurn` call goes here).
-2. Look for `copilot_event: turn_complete` for success, or `copilot_live_turn_failed` for errors.
-3. Check `/api/health`. If `database.ok=false`, see Turso status page. If `anthropic.ok=false`, check the API key and Anthropic status.
-4. If `query_salesforce` is erroring: check `SF_*` env vars, try `curl` the SF `/services/oauth2/token` endpoint manually.
+1. Check `/api/health` first.
+2. Vercel function logs — every turn emits a `copilot_event: turn_complete` JSON line. Errors emit `copilot_live_turn_failed`.
+3. SF callout failures show as `Apex REST /plan/memory` or `/plan/soql` errors with the upstream HTTP status. 401 = token; 400 = bad request shape (look at the `error` field); 500 = SF DML/Query exception (check Salesforce debug logs).
+4. Most likely culprits, in order: shared-secret mismatch, expired Connected App token, integration user missing object permissions.
 
-### Triage: copilot slow or expensive
+### Triage — copilot slow or expensive
 
-- `cost_cap_hit: true` in logs means a single turn exceeded `COPILOT_MAX_COST_USD_PER_TURN`. Look at `tool_names` — a loop of many tool calls is the usual cause.
-- `cache_read_tokens` close to `input_tokens` on turn 2+ = caching is working. If not, system prompt likely changed between turns (ideally static).
-- Escalate to Opus selectively by passing `model: "claude-opus-4-7"` in the request body for hard questions.
+- **Slow**: each memory operation is a Vercel→SF round-trip (~200-400ms). A turn does 3-5 of these — 1-2s of memory overhead is normal. The Anthropic call is usually the dominant cost (4-8s).
+- **Expensive**: `cost_cap_hit: true` in logs means a single turn exceeded `COPILOT_MAX_COST_USD_PER_TURN`. Check `tool_names` for runaway tool loops. `cache_read_tokens / input_tokens` ratio on turn 2+ should be ≥0.6 for a healthy cache.
+
+### Querying memory directly (admin tasks)
+
+```sql
+-- All conversations for a customer
+SELECT Id, Title__c, User_Id__c, Last_Activity_At__c, CreatedDate
+FROM Plan_Conversation__c
+WHERE Customer_Id__c = 'yellowhammer'
+ORDER BY Last_Activity_At__c DESC
+
+-- Full thread
+SELECT Sequence__c, Role__c, Content_Format__c, Content__c
+FROM Plan_Message__c
+WHERE Conversation__c = 'a01...'
+ORDER BY Sequence__c ASC
+
+-- Today's spend per user
+SELECT User_Id__c, Turn_Count__c, Cost_Usd_Micros__c / 1000000 cost_usd
+FROM Plan_Usage_Daily__c
+WHERE Day__c = TODAY
+```
+
+GDPR-style data delete for one user:
+
+```sql
+DELETE FROM Plan_Conversation__c WHERE User_Id__c = '005...'
+-- Cascades to Plan_Message__c via the master-detail relationship.
+```
 
 ## Content redaction (logs)
 
-`pino` is configured with a redact list in `copilotLog.ts` that strips any accidentally-logged prompt, assistant text, or tool input/output. Customer ids are hashed to `customer_id_hash` (first 16 chars of sha256).
+`pino` is configured with a redact list in `copilotLog.ts` that strips any prompt, assistant text, or tool input/output. Customer ids are hashed (sha256, first 16 chars) to `customer_id_hash`. Content lives in Salesforce; logs only carry metadata.
 
-If you need to inspect raw content for a debugging session, set `DEBUG_COPILOT=1` on the local dev server only. Never on production.
+For local debugging only: `LOG_LEVEL=debug` shows tool dispatch detail. Never enable on production.
 
 ## Cost model (2026-04 approx)
 
@@ -205,16 +222,17 @@ Daily budget $25 (default) = ~750 Sonnet turns or ~150 Opus turns per customer p
 
 ## Known limits
 
-- **Apex callout limit**: Salesforce allows max 100 callouts per transaction. Each LWC copilot turn uses 1 callout to `/api/copilot`. Each copilot turn on the Vercel side can make 0-1 callback for SOQL. Well within limits.
-- **Vercel function timeout**: 60s on Hobby, 300s on Pro. A multi-tool turn can approach 30-45s. Ensure project is on Pro.
-- **Turso free tier**: 9GB storage, 1B row reads/month. Yellowhammer at ~10 turns/day will stay in free tier for years.
-- **Anthropic rate limits**: Tier 2 is 50 RPM on Opus, higher on Sonnet. Our per-turn cost cap enforces before hitting rate limits in practice.
+- **Salesforce API call quota**: each turn does ~5 callouts to Apex REST. Enterprise edition gives 100K/day. At 200 turns/day = ~1000 calls — comfortable.
+- **Apex governor limits**: each `appendTurn` call inserts up to 60 messages (we cap at 60 entries). Well under the 10K DML row limit.
+- **Apex callout limit (LWC side)**: each LWC copilot turn uses 1 callout to `/api/copilot`. Within limits.
+- **Vercel function timeout**: 60s on Hobby, 300s on Pro. Multi-tool turns can hit 30-45s. Use Pro.
+- **Anthropic rate limits**: Tier 2 is 50 RPM on Opus, higher on Sonnet. The cost-per-turn cap usually trips first.
+- **`Plan_Message__c.Content__c`**: 131K chars per row. Multi-tool turns serialize tool_use + tool_result blocks as JSON, typically 5-30K. Plenty of headroom.
 
 ## Future work (not blocking launch)
 
-- Multi-tenant isolation (per-tenant Anthropic workspace, separate rate buckets)
-- Retention cron: auto-delete conversations older than 90 days
-- Datadog dashboard template (p50/p99 latency, cost/customer/day, cache hit ratio)
-- Conversation export for GDPR-style data requests
-- Circuit breaker on Anthropic (master has one in `master` branch; needs merge)
-- Prompt + tool schema versioning on every response (master has PROMPT_VERSION; needs merge)
+- Datadog dashboard template (p50/p99 latency, cost/customer/day, cache hit ratio, SF callout latency)
+- Retention cron via SF Scheduled Apex: auto-delete conversations older than 90 days
+- Conversation export REST endpoint for GDPR-style data requests (returns the full Plan_Conversation__c + Plan_Message__c tree as JSON)
+- Multi-customer isolation: per-tenant Anthropic workspaces
+- Long-context summarization: when a thread exceeds 30 messages, replace older turns with a Haiku-generated summary block

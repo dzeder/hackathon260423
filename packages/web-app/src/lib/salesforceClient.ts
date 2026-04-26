@@ -86,6 +86,56 @@ async function getAccessToken(): Promise<TokenCache> {
   return _tokenCache;
 }
 
+/**
+ * Generic POST to a custom Apex REST endpoint at /services/apexrest/<path>.
+ * Auto-attaches the Connected App access token, refreshes on 401, and
+ * surfaces typed errors. Used by both the SOQL tool and the memory store
+ * client so the OAuth token cache is shared.
+ */
+export async function callApexRest<T = unknown>(
+  path: string,
+  body: unknown,
+): Promise<T> {
+  if (!isSalesforceConfigured()) {
+    throw new Error(
+      "Salesforce not configured — SF_LOGIN_URL/SF_CONSUMER_KEY/SF_CONSUMER_SECRET missing",
+    );
+  }
+  const token = await getAccessToken();
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const url = `${token.instanceUrl}/services/apexrest${cleanPath}`;
+  let resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token.accessToken}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (resp.status === 401) {
+    // Token may have been server-rotated mid-flight. Drop cache, re-auth, retry once.
+    _tokenCache = null;
+    const fresh = await getAccessToken();
+    resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${fresh.accessToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  if (!resp.ok) {
+    const errBody = await resp.text();
+    throw new Error(
+      `Apex REST ${cleanPath} ${resp.status}: ${errBody.slice(0, 300)}`,
+    );
+  }
+  return (await resp.json()) as T;
+}
+
 export type SoqlResult = {
   records: Array<Record<string, unknown>>;
   totalSize: number;

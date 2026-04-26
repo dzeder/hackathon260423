@@ -7,13 +7,13 @@ import { eventsCatalog } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
 import { runCopilotTurn } from "@/lib/copilotClaude";
 import { checkAuth } from "@/lib/copilotAuth";
-import { isPersistenceAvailable } from "@/lib/copilotDb";
 import { logError, logTurn } from "@/lib/copilotLog";
 import {
   appendTurn,
   getDailyUsage,
   getOrCreateActive,
   incrementUsage,
+  isPersistenceAvailable,
   listThreads,
   loadHistoryAsApiMessages,
   loadHistoryForDisplay,
