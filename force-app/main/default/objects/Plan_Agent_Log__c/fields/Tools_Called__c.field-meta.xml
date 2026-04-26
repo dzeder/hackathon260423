@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Tools_Called__c</fullName>
+    <description>Human-readable trace, e.g. "queryBaseline(23ms,ok=true), applyScenario(71ms,ok=true)".</description>
+    <externalId>false</externalId>
+    <label>Tools Called</label>
+    <length>8192</length>
+    <trackTrending>false</trackTrending>
+    <type>LongTextArea</type>
+    <visibleLines>5</visibleLines>
+</CustomField>

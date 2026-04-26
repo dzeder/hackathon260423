@@ -68,6 +68,9 @@ public with sharing class OhfyPlanMcpGateway {
         req.setMethod('POST');
         req.setHeader('Content-Type', 'application/json');
         req.setHeader('Accept', 'application/json');
+        // Tenancy header — the web-app requires this on every /api/tools/* call.
+        // When we migrate to External Credentials, this can move to the NC config.
+        req.setHeader('x-customer-id', UserInfo.getOrganizationId());
         req.setTimeout(TIMEOUT_MS);
         req.setBody(String.isBlank(payload) ? '{}' : payload);
         addAuthHeader(req);
@@ -81,6 +84,9 @@ public with sharing class OhfyPlanMcpGateway {
         }
         if (!ALLOWED_TOOLS.contains(toolName)) {
             throw new AuraHandledException('toolName not allow-listed: ' + toolName);
+        }
+        if (!OhfyPlanAgentConfig.isEnabled(toolName, UserInfo.getOrganizationId())) {
+            throw new AuraHandledException('tool is disabled by Plan_Agent_Config__mdt: ' + toolName);
         }
         HttpRequest req = buildRequest(toolName, payload);
         try {
@@ -145,6 +151,7 @@ public with sharing class OhfyPlanMcpGateway {
         req.setMethod('POST');
         req.setHeader('Content-Type', 'application/json');
         req.setHeader('Accept', 'application/json');
+        req.setHeader('x-customer-id', UserInfo.getOrganizationId());
         req.setTimeout(TIMEOUT_MS);
         req.setBody(JSON.serialize(body));
         addAuthHeader(req);

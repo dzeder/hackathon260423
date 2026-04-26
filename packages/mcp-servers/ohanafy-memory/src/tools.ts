@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { loadKnowledge, searchKnowledge } from "./knowledge.js";
 import {
   compareScenarios,
   filterDecisions,
@@ -6,6 +7,11 @@ import {
   type DecisionRecord,
 } from "./logic.js";
 import { sharedStore, MemoryStore } from "./store.js";
+
+/** Every tool call must identify which customer org the request is for. */
+export const CustomerContextSchema = z.object({
+  customerId: z.string().min(1, "customerId is required"),
+});
 
 const TotalsSchema = z.object({
   revenue: z.number(),
@@ -20,20 +26,25 @@ const ScenarioSummarySchema = z.object({
   totals: TotalsSchema,
 });
 
-export const RecordDecisionInput = z.object({
+export const RecordDecisionInput = CustomerContextSchema.extend({
   scenarioId: z.string().min(1),
   note: z.string().min(1).max(4000),
   author: z.string().optional(),
   tags: z.array(z.string()).default([]),
 });
 
-export const ListDecisionsInput = z.object({
+export const ListDecisionsInput = CustomerContextSchema.extend({
   scenarioId: z.string().min(1),
 });
 
-export const CompareScenariosInput = z.object({
+export const CompareScenariosInput = CustomerContextSchema.extend({
   a: ScenarioSummarySchema,
   b: ScenarioSummarySchema,
+});
+
+export const SearchKnowledgeInput = z.object({
+  query: z.string().min(1).max(500),
+  limit: z.number().int().positive().max(20).default(3),
 });
 
 type Deps = { store: MemoryStore };
@@ -80,6 +91,12 @@ export async function compareScenariosTool(raw: unknown) {
   return defaults.compareScenariosTool(raw);
 }
 
+export async function searchKnowledgeTool(raw: unknown) {
+  const { query, limit } = SearchKnowledgeInput.parse(raw);
+  const hits = searchKnowledge(loadKnowledge(), query, limit);
+  return { hits, count: hits.length };
+}
+
 export const TOOL_REGISTRY = {
   record_decision: {
     description: "Append a CFO/analyst note to a scenario's decision log.",
@@ -95,6 +112,11 @@ export const TOOL_REGISTRY = {
     description: "Compare two scenario summaries and report abs + pct deltas plus a verdict on EBITDA.",
     input: CompareScenariosInput,
     handler: compareScenariosTool,
+  },
+  search_knowledge: {
+    description: "Search the Yellowhammer knowledge base (customer profile, domain playbooks, glossary) by free-text query. BM25-lite scoring over title + body + tags.",
+    input: SearchKnowledgeInput,
+    handler: searchKnowledgeTool,
   },
 } as const;
 

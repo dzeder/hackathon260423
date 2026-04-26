@@ -4,10 +4,13 @@ import { baselineForecast } from "@/data/baseline";
 import { applyEvents } from "@/lib/applyEvents";
 import { respond } from "@/lib/copilot";
 import { eventsCatalog } from "@/lib/eventsCatalog";
+import { log } from "@/lib/log";
+import { METRICS, recordLatency } from "@/lib/metrics";
 import { runThreeStatement } from "@/lib/threeStatement";
+import { PROMPT_VERSION, TOOL_SCHEMA_VERSION } from "@/lib/versions";
 import { runCopilotTurn } from "@/lib/copilotClaude";
 import { checkAuth } from "@/lib/copilotAuth";
-import { logError, logTurn } from "@/lib/copilotLog";
+import { logTurn } from "@/lib/copilotLog";
 import {
   appendTurn,
   getDailyUsage,
@@ -37,11 +40,16 @@ const Body = z.object({
 
 const MAX_HISTORY_FOR_REPLAY = 30;
 
-// Per-user-per-day hard cap. Configurable via env so different customers can
+// Per-user-per-day hard caps. Configurable via env so different customers can
 // buy different ceilings without a code change.
 const MAX_TURNS_PER_DAY = Number(process.env.COPILOT_MAX_TURNS_PER_DAY ?? "200");
 const MAX_COST_USD_PER_DAY = Number(process.env.COPILOT_MAX_COST_USD_PER_DAY ?? "25");
 const MAX_COST_USD_PER_TURN = Number(process.env.COPILOT_MAX_COST_USD_PER_TURN ?? "0.30");
+
+const VERSIONS = {
+  promptVersion: PROMPT_VERSION,
+  toolSchemaVersion: TOOL_SCHEMA_VERSION,
+};
 
 function scopeFromRequest(userIdFromBody: string | undefined): Scope {
   return {
@@ -86,7 +94,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const startMs = Date.now();
+  const startMs = performance.now();
   const auth = checkAuth(req);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.reason }, { status: auth.status });
@@ -119,34 +127,40 @@ export async function POST(req: Request) {
   }
 
   // Rate / cost guardrails. Skipped when persistence is off — the counter
-  // lives in the DB.
+  // lives in Salesforce.
   const usage = persistenceOn
     ? await getDailyUsage(scope)
     : { turnCount: 0, costUsd: 0 };
   if (usage.turnCount >= MAX_TURNS_PER_DAY) {
+    recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
+      "source:rate_limited",
+    ]);
     return NextResponse.json(
       {
         error: "rate_limit_exceeded",
         detail: `Daily turn cap reached (${MAX_TURNS_PER_DAY}). Resets 00:00 UTC.`,
         conversationId,
+        ...VERSIONS,
       },
       { status: 429 },
     );
   }
   if (usage.costUsd >= MAX_COST_USD_PER_DAY) {
+    recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
+      "source:cost_capped",
+    ]);
     return NextResponse.json(
       {
         error: "cost_cap_exceeded",
         detail: `Daily spend cap reached ($${usage.costUsd.toFixed(2)} of $${MAX_COST_USD_PER_DAY.toFixed(2)}). Resets 00:00 UTC.`,
         conversationId,
+        ...VERSIONS,
       },
       { status: 429 },
     );
   }
 
-  // No API key -> canned path. Persists when the DB is wired up so the
-  // thread UI shows continuity; on serverless-without-Turso, turns are
-  // stateless but the UI still renders.
+  // No API key -> canned path. Persists when the SF memory store is wired.
   if (!process.env.ANTHROPIC_API_KEY) {
     const canned = respondCanned(parsed);
     if (persistenceOn) {
@@ -169,13 +183,21 @@ export async function POST(req: Request) {
         ]);
         await incrementUsage(scope, 0);
       } catch (persistErr) {
-        console.warn(
+        log.warn(
           "copilot: canned persist failed",
           persistErr instanceof Error ? persistErr.message : persistErr,
         );
       }
     }
-    return NextResponse.json({ ...canned, source: "canned", conversationId });
+    recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
+      "source:canned",
+    ]);
+    return NextResponse.json({
+      ...canned,
+      source: "canned",
+      conversationId,
+      ...VERSIONS,
+    });
   }
 
   // Live turn.
@@ -188,7 +210,7 @@ export async function POST(req: Request) {
       const recalled = await recallForUser(scope, conversationId, parsed.prompt);
       recallBlock = formatRecallForPrompt(recalled);
     } catch (err) {
-      console.warn("copilot: recall failed", err instanceof Error ? err.message : err);
+      log.warn("copilot: recall failed", err instanceof Error ? err.message : err);
     }
   }
 
@@ -209,7 +231,7 @@ export async function POST(req: Request) {
         await appendTurn(conversationId, scope, turn.newMessages);
         await incrementUsage(scope, turn.costUsd);
       } catch (persistErr) {
-        console.warn(
+        log.warn(
           "copilot: persist failed",
           persistErr instanceof Error ? persistErr.message : persistErr,
         );
@@ -217,6 +239,7 @@ export async function POST(req: Request) {
     }
 
     const shaped = coerceCopilotShape(turn.finalText);
+    const latencyMs = Math.round(performance.now() - startMs);
 
     logTurn({
       customerId: scope.customerId,
@@ -232,9 +255,11 @@ export async function POST(req: Request) {
       costUsd: turn.costUsd,
       costCapHit: turn.costCapHit,
       toolNames: turn.toolCalls.map((c) => c.name),
-      latencyMs: Date.now() - startMs,
+      latencyMs,
       source: "live",
     });
+
+    recordLatency(METRICS.COPILOT_LATENCY, latencyMs, ["source:live"]);
 
     return NextResponse.json({
       ...shaped,
@@ -245,24 +270,30 @@ export async function POST(req: Request) {
         ok: c.ok,
         elapsedMs: c.elapsedMs,
       })),
+      toolsCalled: turn.toolCalls.map((c) => c.name).join(", ") || "(none)",
       usage: turn.usage,
       iterations: turn.iterations,
       model: turn.model,
       costUsd: turn.costUsd,
       costCapHit: turn.costCapHit,
+      ...VERSIONS,
     });
   } catch (err) {
-    logError("copilot_live_turn_failed", {
-      customer_id_hash_input: scope.customerId,
-      conversation_id: conversationId,
+    log.error("copilot_live_turn_failed", {
+      conversationId,
       error: err instanceof Error ? err.message : "unknown",
     });
     const canned = respondCanned(parsed);
+    recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
+      "source:canned",
+      "fallback:1",
+    ]);
     return NextResponse.json({
       ...canned,
       source: "canned",
       conversationId,
       error: err instanceof Error ? err.message : "unknown error",
+      ...VERSIONS,
     });
   }
 }

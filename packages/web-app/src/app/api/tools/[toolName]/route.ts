@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { baselineForecast } from "@/data/baseline";
+import { getRateLimit, isToolEnabled } from "@/lib/agentConfig";
 import { applyEvents } from "@/lib/applyEvents";
+import { CustomerIdError, extractCustomerId, hashCustomerId } from "@/lib/customerId";
 import { eventsCatalog } from "@/lib/eventsCatalog";
+import { METRICS, incrementCounter } from "@/lib/metrics";
+import { consume } from "@/lib/rateLimit";
 import { runThreeStatement } from "@/lib/threeStatement";
 
 export const runtime = "nodejs";
 
 const SnapshotBody = z.object({
+  customerId: z.string().min(1),
   scenarioId: z.string().min(1),
   events: z
     .array(z.object({ id: z.string(), month: z.string().optional(), revenueDeltaPct: z.number().optional() }))
@@ -22,6 +27,7 @@ function handleSnapshot(body: unknown) {
   const threeStatement = runThreeStatement(scenario);
   return {
     scenarioId: parsed.scenarioId,
+    customerIdHash: hashCustomerId(parsed.customerId),
     baseline: baselineForecast,
     scenario,
     threeStatement,
@@ -35,12 +41,42 @@ export async function POST(
   { params }: { params: { toolName: string } },
 ) {
   const toolName = params.toolName;
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    body = {};
+  if (!isToolEnabled(toolName)) {
+    incrementCounter(METRICS.TOOL_DISABLED, [`tool:${toolName}`]);
+    return NextResponse.json(
+      { error: `tool is disabled: ${toolName}` },
+      { status: 503 },
+    );
   }
+
+  let customerId: string;
+  try {
+    customerId = extractCustomerId(req);
+  } catch (err) {
+    if (err instanceof CustomerIdError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+    throw err;
+  }
+
+  // Rate-limit gate keyed on the extracted tenant id.
+  const decision = consume(customerId, toolName, getRateLimit(toolName));
+  if (!decision.allowed) {
+    incrementCounter(METRICS.TOOL_RATE_LIMIT, [`tool:${toolName}`]);
+    return NextResponse.json(
+      { error: `rate limit exceeded for ${toolName}`, retryAfterSec: decision.retryAfterSec },
+      { status: 429, headers: { "Retry-After": String(decision.retryAfterSec ?? 60) } },
+    );
+  }
+
+  let bodyRaw: Record<string, unknown>;
+  try {
+    const parsed = await req.json();
+    bodyRaw = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    bodyRaw = {};
+  }
+  const body = { ...bodyRaw, customerId };
 
   try {
     switch (toolName) {

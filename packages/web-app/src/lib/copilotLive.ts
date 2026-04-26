@@ -1,10 +1,43 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { CircuitBreaker, CircuitOpenError } from "@/lib/circuitBreaker";
 import type { CopilotQuery, CopilotResponse } from "@/lib/copilot";
 import { findEvent } from "@/lib/eventsCatalog";
+import { METRICS, incrementCounter } from "@/lib/metrics";
 
 const MODEL = "claude-opus-4-7";
 const MAX_TOKENS = 700;
 const TIMEOUT_MS = 15000;
+
+/**
+ * Fail fast with a generic message that never includes the key value.
+ * Errors from this function are safe to log verbatim.
+ */
+function assertAnthropicKey(): void {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key || key.trim().length === 0) {
+    throw new AnthropicKeyMissingError(
+      "ANTHROPIC_API_KEY is not set — route through canned fallback or configure the Vercel env var.",
+    );
+  }
+}
+
+export class AnthropicKeyMissingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AnthropicKeyMissingError";
+  }
+}
+
+/**
+ * Trip after 5 failures in a 60s window, stay open for 30s. Anthropic
+ * outages tend to be transient; these numbers avoid thrashing.
+ */
+export const anthropicBreaker = new CircuitBreaker({
+  name: "anthropic",
+  failureThreshold: 5,
+  windowMs: 60_000,
+  cooldownMs: 30_000,
+});
 
 function totals(months: CopilotQuery["baseline"]) {
     return months.reduce(
@@ -77,19 +110,30 @@ function isCopilotResponse(v: unknown): v is CopilotResponse {
 }
 
 export async function respondLive(q: CopilotQuery): Promise<CopilotResponse> {
+    assertAnthropicKey();
     const client = new Anthropic({ timeout: TIMEOUT_MS });
     const context = buildContext(q);
-    const msg = await client.messages.create({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system: SYSTEM_PROMPT,
-        messages: [
-            {
-                role: "user",
-                content: `${context}\n\nQUESTION: ${q.prompt}`,
-            },
-        ],
-    });
+    let msg;
+    try {
+        msg = await anthropicBreaker.exec(() =>
+            client.messages.create({
+                model: MODEL,
+                max_tokens: MAX_TOKENS,
+                system: SYSTEM_PROMPT,
+                messages: [
+                    {
+                        role: "user",
+                        content: `${context}\n\nQUESTION: ${q.prompt}`,
+                    },
+                ],
+            }),
+        );
+    } catch (err) {
+        if (err instanceof CircuitOpenError) {
+            incrementCounter(METRICS.TOOL_CIRCUIT_OPEN, ["tool:anthropic"]);
+        }
+        throw err;
+    }
     const textBlock = msg.content.find((b) => b.type === "text");
     if (!textBlock || textBlock.type !== "text") {
         throw new Error("live copilot returned no text block");
