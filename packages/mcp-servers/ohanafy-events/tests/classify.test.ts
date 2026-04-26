@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { loadCatalog } from "../src/catalog.js";
 import { classifyScenario, tokenize } from "../src/classify.js";
 
-const catalog = loadCatalog();
+const catalog = await loadCatalog();
 
 describe("tokenize", () => {
   it("strips punctuation and stopwords, lowercases", () => {
