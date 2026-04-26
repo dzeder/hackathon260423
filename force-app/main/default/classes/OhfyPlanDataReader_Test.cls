@@ -225,6 +225,10 @@ private class OhfyPlanDataReader_Test {
             SELECT Applied_Event_Ids__c FROM Plan_Scenario_Decision__c
             WHERE Decision_Id__c = :decisionId
         ];
-        System.assertEquals('', row.Applied_Event_Ids__c, 'null list -> empty string');
+        // SF normalizes an empty LongTextArea write to null on read.
+        System.assert(
+            row.Applied_Event_Ids__c == null || row.Applied_Event_Ids__c == '',
+            'null list -> empty/null, got ' + row.Applied_Event_Ids__c
+        );
     }
 }
