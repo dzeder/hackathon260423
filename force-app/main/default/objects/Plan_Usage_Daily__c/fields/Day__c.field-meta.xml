@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Day__c</fullName>
+    <description>UTC day, ISO YYYY-MM-DD.</description>
+    <externalId>false</externalId>
+    <label>Day</label>
+    <required>true</required>
+    <type>Date</type>
+</CustomField>

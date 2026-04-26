@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Content_Format__c</fullName>
+    <description>text = Content__c is a plain string. blocks = Content__c is a JSON-serialized array of Anthropic content blocks (text / tool_use / tool_result).</description>
+    <label>Content Format</label>
+    <required>true</required>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value><fullName>text</fullName><default>true</default><label>text</label></value>
+            <value><fullName>blocks</fullName><default>false</default><label>blocks</label></value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>
