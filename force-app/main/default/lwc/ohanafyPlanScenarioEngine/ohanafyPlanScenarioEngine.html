@@ -103,6 +103,14 @@
                         onclick={handleRunScenario}
                         disabled={isLoading}
                     ></lightning-button>
+                    <lightning-button
+                        label="Accept scenario"
+                        variant="success"
+                        onclick={handleAcceptScenario}
+                        disabled={disableAccept}
+                        data-testid="accept-scenario"
+                        class="slds-m-left_x-small"
+                    ></lightning-button>
                 </div>
             </header>
 
@@ -113,7 +121,7 @@
                     data-testid="gateway-error"
                 >
                     <span class="slds-assistive-text">error</span>
-                    {errorMessage}
+                    {displayedError}
                 </div>
             </template>
 

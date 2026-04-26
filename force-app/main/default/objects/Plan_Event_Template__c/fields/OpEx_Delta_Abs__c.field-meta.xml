@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>OpEx_Delta_Abs__c</fullName>
+    <description>Absolute OpEx delta in USD thousands applied to the baseline for the affected month.</description>
+    <externalId>false</externalId>
+    <label>OpEx Delta (abs $k)</label>
+    <precision>8</precision>
+    <required>false</required>
+    <scale>2</scale>
+    <trackTrending>false</trackTrending>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

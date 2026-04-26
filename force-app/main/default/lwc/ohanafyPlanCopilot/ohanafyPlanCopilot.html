@@ -68,6 +68,21 @@
                 </div>
 
                 <div class="ohfy-copilot__stream">
+                    <template lwc:if={hasGroundingArticles}>
+                        <section class="ohfy-copilot__grounding" data-testid="copilot-grounding">
+                            <p class="ohfy-copilot__grounding-title">Sources from in-org knowledge</p>
+                            <ul class="ohfy-copilot__grounding-list">
+                                <template for:each={groundingArticles} for:item="article">
+                                    <li key={article.id} class="ohfy-copilot__grounding-item">
+                                        <p class="ohfy-copilot__grounding-heading">{article.title}</p>
+                                        <p class="ohfy-copilot__grounding-preview">{article.preview}</p>
+                                        <p class="ohfy-copilot__grounding-source">{article.source}</p>
+                                    </li>
+                                </template>
+                            </ul>
+                        </section>
+                    </template>
+
                     <template lwc:if={hasError}>
                         <div class="ohfy-copilot__error" role="alert" data-testid="copilot-error">{errorMessage}</div>
                     </template>

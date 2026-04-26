@@ -1,13 +1,37 @@
 import { createElement } from 'lwc';
 import OhanafyPlanScenarioEngine from 'c/ohanafyPlanScenarioEngine';
+import { createApexTestWireAdapter } from '@salesforce/sfdx-lwc-jest';
+import listEventTemplates from '@salesforce/apex/OhfyPlanDataReader.listEventTemplates';
 
 const mockInvokeTool = jest.fn();
+const mockRecordDecision = jest.fn();
 
 jest.mock(
     '@salesforce/apex/OhfyPlanMcpGateway.invokeTool',
     () => ({ default: (...args) => mockInvokeTool(...args) }),
     { virtual: true }
 );
+
+jest.mock(
+    '@salesforce/apex/OhfyPlanDataReader.listEventTemplates',
+    () => ({ default: createApexTestWireAdapter(jest.fn()) }),
+    { virtual: true }
+);
+
+jest.mock(
+    '@salesforce/apex/OhfyPlanDataReader.recordDecision',
+    () => ({ default: (...args) => mockRecordDecision(...args) }),
+    { virtual: true }
+);
+
+const MOCK_EVENT_TEMPLATES = [
+    { eventId: 'iron-bowl-2026', label: 'Iron Bowl weekend', month: '2026-10', revenueDeltaPct: 9.5, category: 'sports' },
+    { eventId: 'heat-wave-july', label: 'July heat wave', month: '2026-07', revenueDeltaPct: 3.1, category: 'weather' },
+    { eventId: 'gulf-hurricane-cat-3', label: 'Gulf hurricane', month: '2026-09', revenueDeltaPct: -7.5, category: 'weather' },
+    { eventId: 'fuel-surcharge-q3', label: 'Diesel price surge', month: '2026-08', revenueDeltaPct: 0, category: 'macro' },
+    { eventId: 'memorial-day-kickoff', label: 'Memorial Day grilling', month: '2026-05', revenueDeltaPct: 4.2, category: 'holiday' },
+    { eventId: 'red-bull-new-flavor', label: 'Red Bull new flavor', month: '2026-06', revenueDeltaPct: 1.8, category: 'supplier' }
+];
 
 function flush() {
     return new Promise((resolve) => setTimeout(resolve, 0));
@@ -64,13 +88,16 @@ describe('c-ohanafy-plan-scenario-engine', () => {
             document.body.removeChild(document.body.firstChild);
         }
         mockInvokeTool.mockReset();
+        mockRecordDecision.mockReset();
     });
 
-    it('renders the scenario picker and the event library', () => {
+    it('renders the scenario picker and the event library', async () => {
         const el = createElement('c-ohanafy-plan-scenario-engine', {
             is: OhanafyPlanScenarioEngine
         });
         document.body.appendChild(el);
+        listEventTemplates.emit(MOCK_EVENT_TEMPLATES);
+        await flush();
 
         const scenario = Array.from(el.shadowRoot.querySelectorAll('lightning-combobox')).find(
             (c) => c.label === 'Scenario'
@@ -86,6 +113,8 @@ describe('c-ohanafy-plan-scenario-engine', () => {
             is: OhanafyPlanScenarioEngine
         });
         document.body.appendChild(el);
+        listEventTemplates.emit(MOCK_EVENT_TEMPLATES);
+        await flush();
 
         const before = findEventButton(el, 'iron-bowl-2026');
         expect(before).toBeTruthy();
@@ -105,6 +134,8 @@ describe('c-ohanafy-plan-scenario-engine', () => {
             is: OhanafyPlanScenarioEngine
         });
         document.body.appendChild(el);
+        listEventTemplates.emit(MOCK_EVENT_TEMPLATES);
+        await flush();
 
         const weatherChip = Array.from(el.shadowRoot.querySelectorAll('.ohfy-chip')).find(
             (b) => b.dataset.id === 'weather'
@@ -123,6 +154,8 @@ describe('c-ohanafy-plan-scenario-engine', () => {
             is: OhanafyPlanScenarioEngine
         });
         document.body.appendChild(el);
+        listEventTemplates.emit(MOCK_EVENT_TEMPLATES);
+        await flush();
 
         const runButton = findLightningButton(el, 'Run scenario');
         runButton.dispatchEvent(new CustomEvent('click'));
@@ -146,6 +179,8 @@ describe('c-ohanafy-plan-scenario-engine', () => {
             is: OhanafyPlanScenarioEngine
         });
         document.body.appendChild(el);
+        listEventTemplates.emit(MOCK_EVENT_TEMPLATES);
+        await flush();
 
         const runButton = findLightningButton(el, 'Run scenario');
         runButton.dispatchEvent(new CustomEvent('click'));
@@ -155,5 +190,35 @@ describe('c-ohanafy-plan-scenario-engine', () => {
         const banner = el.shadowRoot.querySelector('[data-testid="gateway-error"]');
         expect(banner).toBeTruthy();
         expect(banner.textContent).toContain('gateway down');
+    });
+
+    it('records a decision via Apex when Accept scenario is clicked', async () => {
+        mockInvokeTool.mockResolvedValueOnce(JSON.stringify(runSnapshot()));
+        mockRecordDecision.mockResolvedValueOnce('11111111-2222-3333-4444-555555555555');
+
+        const el = createElement('c-ohanafy-plan-scenario-engine', {
+            is: OhanafyPlanScenarioEngine
+        });
+        document.body.appendChild(el);
+        listEventTemplates.emit(MOCK_EVENT_TEMPLATES);
+        await flush();
+
+        findLightningButton(el, 'Run scenario').dispatchEvent(new CustomEvent('click'));
+        await flush();
+        await flush();
+
+        const acceptButton = el.shadowRoot.querySelector('[data-testid="accept-scenario"]');
+        expect(acceptButton).toBeTruthy();
+        expect(acceptButton.disabled).toBe(false);
+        acceptButton.dispatchEvent(new CustomEvent('click'));
+        await flush();
+        await flush();
+
+        expect(mockRecordDecision).toHaveBeenCalledWith(
+            expect.objectContaining({
+                scenarioId: 'yellowhammer-6mo',
+                decisionType: 'accept'
+            })
+        );
     });
 });

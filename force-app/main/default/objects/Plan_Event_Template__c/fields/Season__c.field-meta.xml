@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Season__c</fullName>
+    <description>Calendar season — used for narrative grouping in the Copilot.</description>
+    <externalId>false</externalId>
+    <label>Season</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>spring</fullName>
+                <default>false</default>
+                <label>Spring</label>
+            </value>
+            <value>
+                <fullName>summer</fullName>
+                <default>false</default>
+                <label>Summer</label>
+            </value>
+            <value>
+                <fullName>fall</fullName>
+                <default>false</default>
+                <label>Fall</label>
+            </value>
+            <value>
+                <fullName>winter</fullName>
+                <default>false</default>
+                <label>Winter</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>
