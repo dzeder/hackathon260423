@@ -31,7 +31,7 @@ type DisplayMessage = {
 };
 
 const SUGGESTIONS = [
-  "What happens to EBITDA if Iron Bowl weekend lands?",
+  "What happens to EBITDA if a top seasonal event lands?",
   "Walk me through revenue for this scenario",
   "What's the biggest downside risk?",
 ];

@@ -15,7 +15,7 @@ import type { ThreeStatement } from "@/lib/threeStatement";
  */
 
 const IC_MEMO_SYSTEM_PROMPT = [
-  "You write the MD&A paragraph for the Yellowhammer Beverage scenario brief.",
+  "You write the MD&A paragraph for the customer's scenario brief.",
   "Audience: CFO presenting to the board.",
   "Length: 120 to 180 words. Single paragraph. No headers, no bullets, no markdown.",
   "Voice: numbers over adverbs. No emojis. No vague qualifiers ('approximately', 'roughly').",
@@ -155,9 +155,9 @@ export function respondCannedIcMemo(input: IcMemoInput): IcMemoResponse {
 
   const confidenceSentence =
     events.length >= 2
-      ? `Confidence: medium — drivers are calibrated to Yellowhammer's prior 12-month invoice history with the weather component carrying the widest band; refresh the depletion cascade before committing to the supplier order.`
+      ? `Confidence: medium — drivers are calibrated to prior 12-month invoice history with the weather component carrying the widest band; refresh the depletion cascade before committing to the supplier order.`
       : events.length === 1
-        ? `Confidence: medium — the applied driver is calibrated to Yellowhammer's prior 12-month invoice history; expand the run with a weather or macro driver before stress-testing cash.`
+        ? `Confidence: medium — the applied driver is calibrated to prior 12-month invoice history; expand the run with a weather or macro driver before stress-testing cash.`
         : `Confidence: high on the baseline assumptions, low on any scenario claim — apply events from the picker to lift the confidence band on revenue, EBITDA, and operating-cash projections.`;
 
   const memo = [

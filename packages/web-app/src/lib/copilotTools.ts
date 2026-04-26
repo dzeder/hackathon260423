@@ -234,7 +234,7 @@ function matchCanned(soql: string): { records: Array<Record<string, unknown>>; n
   if (lower.includes("account")) {
     return {
       note:
-        "Canned account rows for Yellowhammer's top on-premise customers in Birmingham/Tuscaloosa.",
+        "Canned demo account rows — top on-premise accounts in the territory. Real SOQL stub returns the customer's actual accounts.",
       records: [
         {
           Id: "001xx000003CAN1AAO",
@@ -324,7 +324,7 @@ export const TOOL_REGISTRY: Record<string, Entry> = {
   },
   query_salesforce: {
     description:
-      "Run a read-only SOQL query against the Salesforce org. Currently returns canned Yellowhammer fixtures — real SOQL is stubbed; use sparingly for account/channel/opportunity lookups that can't be answered from baseline.",
+      "Run a read-only SOQL query against the Salesforce org. Currently returns canned demo fixtures — real SOQL is stubbed; use sparingly for account/channel/opportunity lookups that can't be answered from baseline.",
     input: QuerySalesforceInput,
     handler: querySalesforceHandler,
   },

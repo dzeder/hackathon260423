@@ -50,7 +50,7 @@ export async function snapshotTool(raw: unknown) {
 
 export const TOOL_REGISTRY = {
   apply_event: {
-    description: "Apply one or more scenario events to the Yellowhammer baseline forecast.",
+    description: "Apply one or more scenario events to the customer's baseline forecast.",
     input: ApplyEventInput,
     handler: applyEventTool,
   },

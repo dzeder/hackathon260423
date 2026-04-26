@@ -1,6 +1,8 @@
 /**
- * Yellowhammer Beverage baseline — demo kernel.
+ * Demo-customer baseline — fallback when Salesforce is not configured.
  * Real numbers come from seed/baseline-forecast.json; this is the in-memory stub.
+ * The visible name + HQ are overridable per-deploy via NEXT_PUBLIC_CUSTOMER_NAME
+ * and NEXT_PUBLIC_CUSTOMER_HQ; the defaults preserve the original demo persona.
  * Dollar amounts in thousands unless otherwise noted.
  */
 
@@ -22,9 +24,9 @@ export const baselineForecast: ForecastMonth[] = [
   { month: "2026-10", revenue: 4_780, cogs: 3_130, opex: 920, gm: 1_650, ebitda: 730 },
 ];
 
-export const yellowhammerProfile = {
-  name: "Yellowhammer Beverage",
-  hq: "Birmingham, AL",
+export const customerProfile = {
+  name: process.env.NEXT_PUBLIC_CUSTOMER_NAME?.trim() || "Yellowhammer Beverage",
+  hq: process.env.NEXT_PUBLIC_CUSTOMER_HQ?.trim() || "Birmingham, AL",
   channels: ["on-premise", "off-premise-chain", "off-premise-indep"],
   suppliers: ["Anheuser-Busch", "Constellation", "Boston Beer", "Red Bull", "Yuengling"],
 } as const;

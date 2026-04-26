@@ -7,7 +7,7 @@ const BASELINE_START = "2026-05-01";
 const BASELINE_END = "2026-10-31";
 
 /**
- * Yellowhammer assumptions — tracked in seed/baseline-forecast.json. The web app uses these
+ * Demo-customer assumptions — tracked in seed/baseline-forecast.json. The web app uses these
  * to derive COGS / OpEx / EBITDA from the org's revenue rollup until those costs land in
  * ohfy__ (or a sibling Plan_Financials__c) directly.
  */
