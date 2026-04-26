@@ -5,6 +5,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { TOOL_REGISTRY, type ToolName } from "./tools.js";
+import { traceTool } from "./tracing.js";
 
 export const SERVER_INFO = {
   name: "ohanafy-plan-mcp-forecast",
@@ -28,7 +29,10 @@ export function createServer(): Server {
     if (!def) {
       throw new Error(`Unknown tool: ${name}`);
     }
-    const result = await def.handler(req.params.arguments);
+    const handler = def.handler as (raw: unknown) => Promise<unknown>;
+    const result = await traceTool(name, req.params.arguments, () =>
+      handler(req.params.arguments),
+    );
     return {
       content: [{ type: "text", text: JSON.stringify(result) }],
     };
