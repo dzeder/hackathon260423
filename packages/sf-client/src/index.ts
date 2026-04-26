@@ -7,3 +7,9 @@ export { getMonthlyDepletionRollup } from "./objects/depletion";
 export type { MonthlyDepletionRollup } from "./objects/depletion";
 export { getPlanEventTemplates } from "./objects/eventTemplate";
 export type { PlanEventTemplate } from "./objects/eventTemplate";
+export { recordPlanScenarioDecision, PlanDecisionTypeEnum } from "./objects/scenarioDecision";
+export type {
+  PlanDecisionType,
+  RecordPlanScenarioDecisionInput,
+  RecordPlanScenarioDecisionResult,
+} from "./objects/scenarioDecision";
