@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Decision_Type__c</fullName>
+    <description>Decision verb captured at the moment of action.</description>
+    <externalId>false</externalId>
+    <label>Decision Type</label>
+    <required>true</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>accept</fullName>
+                <default>false</default>
+                <label>Accept</label>
+            </value>
+            <value>
+                <fullName>reject</fullName>
+                <default>false</default>
+                <label>Reject</label>
+            </value>
+            <value>
+                <fullName>pivot</fullName>
+                <default>false</default>
+                <label>Pivot</label>
+            </value>
+            <value>
+                <fullName>scope-cut</fullName>
+                <default>false</default>
+                <label>Scope Cut</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

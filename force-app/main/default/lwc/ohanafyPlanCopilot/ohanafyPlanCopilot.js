@@ -1,7 +1,9 @@
-import { LightningElement, track } from 'lwc';
+import { LightningElement, track, wire } from 'lwc';
 import invokeCopilot from '@salesforce/apex/OhfyPlanMcpGateway.invokeCopilot';
 import loadActiveThread from '@salesforce/apex/OhfyPlanMcpGateway.loadActiveThread';
 import startNewThread from '@salesforce/apex/OhfyPlanMcpGateway.startNewThread';
+import listEventTemplates from '@salesforce/apex/OhfyPlanDataReader.listEventTemplates';
+import listKnowledgeArticles from '@salesforce/apex/OhfyPlanDataReader.listKnowledgeArticles';
 
 const SCENARIO_OPTIONS = [
     { label: 'Yellowhammer — 6mo base', value: 'yellowhammer-6mo' },
@@ -9,20 +11,13 @@ const SCENARIO_OPTIONS = [
     { label: 'Yellowhammer — upside (Iron Bowl + heat)', value: 'yellowhammer-upside' }
 ];
 
-const EVENT_OPTIONS = [
-    { id: 'iron-bowl-2026', label: 'Iron Bowl weekend' },
-    { id: 'heat-wave-july', label: 'July heat wave' },
-    { id: 'gulf-hurricane-cat-3', label: 'Gulf hurricane (Mobile)' },
-    { id: 'fuel-surcharge-q3', label: 'Diesel price surge' },
-    { id: 'memorial-day-kickoff', label: 'Memorial Day grilling' },
-    { id: 'red-bull-new-flavor', label: 'Red Bull new flavor launch' }
-];
-
 const SUGGESTIONS = [
     'What happens to EBITDA if Iron Bowl weekend lands?',
     'Walk me through revenue for this scenario',
     "What's the biggest downside risk?"
 ];
+
+const SOURCE_PREVIEW_CHARS = 200;
 
 // Parses assistant messages whose text is a JSON envelope of the shape
 // {text, bullets, citations}. Returns null when the message is plain prose.
@@ -61,6 +56,20 @@ export default class OhanafyPlanCopilot extends LightningElement {
     @track errorMessage = null;
     @track isLoading = false;
     @track isOpen = false;
+    @track eventCatalog = [];
+    @track allArticles = [];
+
+    @wire(listEventTemplates, { region: 'AL', category: null })
+    wiredEvents({ data }) {
+        if (data) {
+            this.eventCatalog = data.map((row) => ({ id: row.eventId, label: row.label }));
+        }
+    }
+
+    @wire(listKnowledgeArticles, { tag: null })
+    wiredArticles({ data }) {
+        if (data) this.allArticles = data;
+    }
 
     // Thread state — mirrors the web-app CopilotPanel for parity.
     @track conversationId = null;
@@ -69,13 +78,38 @@ export default class OhanafyPlanCopilot extends LightningElement {
 
     get eventOptions() {
         const applied = new Set(this.appliedIds);
-        return EVENT_OPTIONS.map((e) => ({
+        return this.eventCatalog.map((e) => ({
             ...e,
             applied: applied.has(e.id),
             chipClass: applied.has(e.id)
                 ? 'ohfy-copilot__chip ohfy-copilot__chip_on'
                 : 'ohfy-copilot__chip'
         }));
+    }
+
+    get groundingArticles() {
+        const tokens = (this.prompt || '').toLowerCase().split(/\W+/).filter(Boolean);
+        if (!tokens.length || !this.allArticles.length) return [];
+        return this.allArticles
+            .map((a) => {
+                const tags = (a.tags || '').toLowerCase().split(',').map((t) => t.trim()).filter(Boolean);
+                const score = tags.filter((t) => tokens.some((tok) => t.includes(tok) || tok.includes(t))).length;
+                return { article: a, score };
+            })
+            .filter((x) => x.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 3)
+            .map((x) => ({
+                id: x.article.articleId,
+                title: x.article.title,
+                preview: (x.article.body || '').slice(0, SOURCE_PREVIEW_CHARS) +
+                    ((x.article.body || '').length > SOURCE_PREVIEW_CHARS ? '…' : ''),
+                source: x.article.source || ''
+            }));
+    }
+
+    get hasGroundingArticles() {
+        return this.groundingArticles.length > 0;
     }
 
     get hasError() {

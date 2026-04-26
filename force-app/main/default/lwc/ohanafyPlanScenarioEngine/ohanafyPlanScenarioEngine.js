@@ -1,19 +1,13 @@
-import { LightningElement, track } from 'lwc';
+import { LightningElement, track, wire } from 'lwc';
+import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import invokeTool from '@salesforce/apex/OhfyPlanMcpGateway.invokeTool';
+import listEventTemplates from '@salesforce/apex/OhfyPlanDataReader.listEventTemplates';
+import recordDecision from '@salesforce/apex/OhfyPlanDataReader.recordDecision';
 
 const SCENARIO_OPTIONS = [
     { label: 'Yellowhammer — 6mo base', value: 'yellowhammer-6mo' },
     { label: 'Yellowhammer — stress (hurricane + fuel)', value: 'yellowhammer-stress' },
     { label: 'Yellowhammer — upside (Iron Bowl + heat)', value: 'yellowhammer-upside' }
-];
-
-const DEMO_EVENTS = [
-    { id: 'iron-bowl-2026', label: 'Iron Bowl weekend', month: '2026-10', revenueDeltaPct: 9.5, category: 'sports' },
-    { id: 'heat-wave-july', label: 'July heat wave', month: '2026-07', revenueDeltaPct: 3.1, category: 'weather' },
-    { id: 'gulf-hurricane-cat-3', label: 'Gulf hurricane (Mobile)', month: '2026-09', revenueDeltaPct: -7.5, category: 'weather' },
-    { id: 'fuel-surcharge-q3', label: 'Diesel price surge', month: '2026-08', revenueDeltaPct: 0, category: 'macro' },
-    { id: 'memorial-day-kickoff', label: 'Memorial Day grilling', month: '2026-05', revenueDeltaPct: 4.2, category: 'holiday' },
-    { id: 'red-bull-new-flavor', label: 'Red Bull new flavor launch', month: '2026-06', revenueDeltaPct: 1.8, category: 'supplier' }
 ];
 
 const CATEGORIES = [
@@ -60,6 +54,30 @@ export default class OhanafyPlanScenarioEngine extends LightningElement {
     @track searchQuery = '';
     @track categoryFilter = 'all';
     @track sortKey = 'impact';
+    @track eventCatalog = [];
+    @track loadEventsError = null;
+    @track isAccepting = false;
+
+    @wire(listEventTemplates, { region: 'AL', category: '$apexCategoryParam' })
+    wiredEvents({ data, error }) {
+        if (data) {
+            this.eventCatalog = data.map((row) => ({
+                id: row.eventId,
+                label: row.label,
+                month: row.month || '',
+                revenueDeltaPct: typeof row.revenueDeltaPct === 'number' ? row.revenueDeltaPct : 0,
+                category: row.category || 'macro'
+            }));
+            this.loadEventsError = null;
+        } else if (error) {
+            this.loadEventsError = error?.body?.message || 'Failed to load event templates';
+            this.eventCatalog = [];
+        }
+    }
+
+    get apexCategoryParam() {
+        return this.categoryFilter === 'all' ? null : this.categoryFilter;
+    }
 
     get categoryChips() {
         return CATEGORIES.map((c) => ({
@@ -73,7 +91,7 @@ export default class OhanafyPlanScenarioEngine extends LightningElement {
 
     get filteredEvents() {
         const q = (this.searchQuery || '').trim().toLowerCase();
-        const filtered = DEMO_EVENTS.filter((e) => {
+        const filtered = this.eventCatalog.filter((e) => {
             if (this.categoryFilter !== 'all' && e.category !== this.categoryFilter) return false;
             if (q && !e.label.toLowerCase().includes(q)) return false;
             return true;
@@ -116,7 +134,7 @@ export default class OhanafyPlanScenarioEngine extends LightningElement {
     }
 
     get visibleLabel() {
-        return `${this.filteredEvents.length} of ${DEMO_EVENTS.length} · ${this.appliedIds.length} applied`;
+        return `${this.filteredEvents.length} of ${this.eventCatalog.length} · ${this.appliedIds.length} applied`;
     }
 
     get hasSnapshot() {
@@ -132,7 +150,15 @@ export default class OhanafyPlanScenarioEngine extends LightningElement {
     }
 
     get hasError() {
-        return this.errorMessage !== null;
+        return this.errorMessage !== null || this.loadEventsError !== null;
+    }
+
+    get displayedError() {
+        return this.errorMessage || this.loadEventsError || '';
+    }
+
+    get disableAccept() {
+        return this.isAccepting || this.isLoading || this.snapshot === null;
     }
 
     get canReset() {
@@ -336,7 +362,7 @@ export default class OhanafyPlanScenarioEngine extends LightningElement {
         this.errorMessage = null;
         try {
             const events = this.appliedIds.map((id) => {
-                const found = DEMO_EVENTS.find((e) => e.id === id);
+                const found = this.eventCatalog.find((e) => e.id === id);
                 return { id, month: found ? found.month : '', revenueDeltaPct: found ? found.revenueDeltaPct : 0 };
             });
             const raw = await invokeTool({
@@ -349,6 +375,29 @@ export default class OhanafyPlanScenarioEngine extends LightningElement {
             this.snapshot = null;
         } finally {
             this.isLoading = false;
+        }
+    }
+
+    async handleAcceptScenario() {
+        if (!this.snapshot) return;
+        this.isAccepting = true;
+        this.errorMessage = null;
+        try {
+            const decisionId = await recordDecision({
+                scenarioId: this.scenarioId,
+                decisionType: 'accept',
+                rationale: `Accepted ${this.scenarioId} via ScenarioEngine LWC with ${this.appliedIds.length} events applied`,
+                appliedEventIds: this.appliedIds
+            });
+            this.dispatchEvent(new ShowToastEvent({
+                title: 'Decision recorded',
+                message: `Saved as ${decisionId}`,
+                variant: 'success'
+            }));
+        } catch (err) {
+            this.errorMessage = (err && err.body && err.body.message) || (err && err.message) || 'Failed to record decision';
+        } finally {
+            this.isAccepting = false;
         }
     }
 }
