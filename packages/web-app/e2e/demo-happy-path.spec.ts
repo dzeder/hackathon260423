@@ -41,4 +41,19 @@ test.describe("demo happy path", () => {
     await page.getByTestId("reset-events").click();
     await expect(page.getByTestId("kpi-event-count")).toHaveText("0");
   });
+
+  test("IC memo button generates a 120-180 word MD&A paragraph", async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto("/");
+    await page.getByTestId("event-iron-bowl-2026").click();
+    await page.getByTestId("ic-memo-button").click();
+
+    const memo = page.getByTestId("ic-memo-output");
+    await expect(memo).toBeVisible({ timeout: 30_000 });
+    const text = (await memo.textContent()) ?? "";
+    const words = text.trim().split(/\s+/).filter(Boolean).length;
+    expect(words).toBeGreaterThanOrEqual(80);
+    expect(words).toBeLessThanOrEqual(220);
+    expect(text.toLowerCase()).toContain("confidence:");
+  });
 });

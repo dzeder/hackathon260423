@@ -10,6 +10,7 @@ import { BaselineChart } from "./BaselineChart";
 import { CopilotPanel } from "./CopilotPanel";
 import { EbitdaChart } from "./EbitdaChart";
 import { EventPicker } from "./EventPicker";
+import { IcMemoButton } from "./IcMemoButton";
 import { MarginChart } from "./MarginChart";
 import { ThreeStatementTable } from "./ThreeStatementTable";
 
@@ -156,6 +157,8 @@ export function ScenarioDashboard({ baseline }: { baseline: ForecastMonth[] }) {
             threeStatement={threeStatement}
             baselineEbitda={baselineEbitda}
           />
+
+          <IcMemoButton scenarioId={SCENARIO_ID} appliedEventIds={appliedIds} />
         </div>
       </main>
 
