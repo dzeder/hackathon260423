@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { baselineForecast } from "@/data/baseline";
+import { getDataSource } from "@/data";
 import { applyEvents } from "@/lib/applyEvents";
 import { eventsCatalog } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
@@ -21,13 +21,14 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  const baseline = await getDataSource().getBaseline();
   const appliedEvents = eventsCatalog.filter((e) =>
     parsed.appliedEventIds.includes(e.id),
   );
-  const scenario = applyEvents(baselineForecast, appliedEvents);
+  const scenario = applyEvents(baseline, appliedEvents);
   const threeStatement = runThreeStatement(scenario);
   return NextResponse.json({
-    baseline: baselineForecast,
+    baseline,
     scenario,
     threeStatement,
     eventCount: appliedEvents.length,
@@ -35,8 +36,9 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
+  const baseline = await getDataSource().getBaseline();
   return NextResponse.json({
-    baseline: baselineForecast,
+    baseline,
     catalog: eventsCatalog,
   });
 }

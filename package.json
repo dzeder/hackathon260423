@@ -5,6 +5,7 @@
   "description": "Ohanafy Plan — hackathon demo kernel (web app + MCP servers + SFDX 2GP).",
   "workspaces": [
     "packages/web-app",
+    "packages/sf-client",
     "packages/mcp-servers",
     "packages/mcp-servers/ohanafy-forecast",
     "packages/mcp-servers/ohanafy-events",

@@ -1,5 +1,9 @@
 import { ScenarioDashboard } from "@/components/ScenarioDashboard";
+import { getDataSource } from "@/data";
 
-export default function Home() {
-  return <ScenarioDashboard />;
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const baseline = await getDataSource().getBaseline();
+  return <ScenarioDashboard baseline={baseline} />;
 }

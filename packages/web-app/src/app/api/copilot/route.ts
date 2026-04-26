@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { baselineForecast } from "@/data/baseline";
+import { getDataSource } from "@/data";
 import { applyEvents } from "@/lib/applyEvents";
 import { respond } from "@/lib/copilot";
 import { respondLive } from "@/lib/copilotLive";
@@ -38,12 +38,13 @@ export async function POST(req: Request) {
 
   const traces: ToolCallTrace[] = [];
 
+  const baseline = await getDataSource().getBaseline();
   const appliedEvents = eventsCatalog.filter((e) =>
     parsed.appliedEventIds.includes(e.id),
   );
   const { result: scenario, trace: applyTrace } = await recordTrace(
     "apply_events",
-    () => applyEvents(baselineForecast, appliedEvents),
+    () => applyEvents(baseline, appliedEvents),
     { input: { eventIds: parsed.appliedEventIds } },
   );
   traces.push(applyTrace);
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
     prompt: parsed.prompt,
     scenarioId: parsed.scenarioId,
     appliedEventIds: parsed.appliedEventIds,
-    baseline: baselineForecast,
+    baseline,
     scenario,
     threeStatement,
   };
