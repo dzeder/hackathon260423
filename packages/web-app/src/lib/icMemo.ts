@@ -114,6 +114,7 @@ export function respondCannedIcMemo(input: IcMemoInput): IcMemoResponse {
   const b = totals(input.baseline);
   const s = totals(input.scenario);
   const dRev = b.revenue ? ((s.revenue - b.revenue) / b.revenue) * 100 : 0;
+  const dEbitda = b.ebitda ? ((s.ebitda - b.ebitda) / b.ebitda) * 100 : 0;
   const baselineGmPct = b.revenue ? (b.gm / b.revenue) * 100 : 0;
   const scenarioGmPct = s.revenue ? (s.gm / s.revenue) * 100 : 0;
   const dGmPctPts = scenarioGmPct - baselineGmPct;
@@ -125,36 +126,47 @@ export function respondCannedIcMemo(input: IcMemoInput): IcMemoResponse {
 
   const top = events.slice(0, 2);
   const cash = input.threeStatement.cash.operating;
+  const closingCash = input.threeStatement.balance.closingCashBalance;
   const lowCash = cash < b.revenue * 0.04;
 
   const headline =
     events.length === 0
-      ? `Scenario ${input.scenarioId} matches baseline at ${fmtUsdK(s.revenue)} revenue and ${scenarioGmPct.toFixed(1)}% gross margin; no events applied this run.`
-      : `Scenario ${input.scenarioId} moves 6-month revenue to ${fmtUsdK(s.revenue)} (${pct(dRev)} vs ${fmtUsdK(b.revenue)} baseline) and gross margin to ${scenarioGmPct.toFixed(1)}% (${pct(dGmPctPts)} pts).`;
+      ? `Scenario ${input.scenarioId} matches the 6-month baseline at ${fmtUsdK(s.revenue)} revenue, ${scenarioGmPct.toFixed(1)}% gross margin, and ${fmtUsdK(s.ebitda)} EBITDA, with no events applied this run; the memo below establishes the as-is reference for downstream stress tests.`
+      : `Scenario ${input.scenarioId} moves 6-month revenue to ${fmtUsdK(s.revenue)} (${pct(dRev)} vs ${fmtUsdK(b.revenue)} baseline), gross margin to ${scenarioGmPct.toFixed(1)}% (${pct(dGmPctPts)} points), and EBITDA to ${fmtUsdK(s.ebitda)} (${pct(dEbitda)}); operating cash settles at ${fmtUsdK(cash)} on closing balance ${fmtUsdK(closingCash)}.`;
 
   const driverSentence = top.length
     ? "Drivers: " +
       top
         .map(
           (e) =>
-            `${e.label} contributes ${pct(e.revenueDeltaPct ?? 0)} revenue with ${pct(e.cogsDeltaPct ?? 0)} COGS in ${e.month} (${e.source})`,
+            `${e.label} contributes ${pct(e.revenueDeltaPct ?? 0)} revenue and ${pct(e.cogsDeltaPct ?? 0)} COGS in ${e.month}, sourced from ${e.source}`,
         )
         .join("; ") +
-      "."
-    : "Drivers: none — refresh the event picker before the meeting.";
+      "; secondary effects on opex are captured in the three-statement view above."
+    : "Drivers: none in this run — the next step is to apply at least one event from the picker so the memo can isolate the lift.";
+
+  const operationsSentence = events.length
+    ? `Operations: incremental volume lands across on-premise, chain, and independent channels in ${top[0]?.month ?? "the affected month"}, so allocation, route density, and pick-pack capacity should be reviewed before the next supplier order; working capital absorbs the COGS step and the chain-program accrual lands in the same period.`
+    : "Operations: route density, allocation, and chain-program accrual all hold at baseline; the working-capital line will move only when an event is applied.";
 
   const riskSentence = lowCash
-    ? `Risk: operating cash of ${fmtUsdK(cash)} sits below the 4% revenue threshold; tighten chain-program spend before approving incremental allocation.`
-    : `Risk: no immediate allocation, cash, or chain-program flag — operating cash holds at ${fmtUsdK(cash)}.`;
+    ? `Risk: operating cash of ${fmtUsdK(cash)} sits below the 4% revenue threshold; tighten chain-program spend, pull supplier-payment timing left, and pause incremental allocation until the next forecast refresh.`
+    : `Risk: no material allocation, cash, or chain-program flag — operating cash holds at ${fmtUsdK(cash)} and the closing balance at ${fmtUsdK(closingCash)} stays inside the working-capital corridor.`;
 
   const confidenceSentence =
     events.length >= 2
-      ? "Confidence: medium — calibrated to Yellowhammer's prior 12-month invoice history, with the weather component carrying the widest band."
+      ? `Confidence: medium — drivers are calibrated to Yellowhammer's prior 12-month invoice history with the weather component carrying the widest band; refresh the depletion cascade before committing to the supplier order.`
       : events.length === 1
-        ? "Confidence: medium — calibrated to Yellowhammer's prior 12-month invoice history for the applied driver."
-        : "Confidence: high on the baseline; no scenario lift to assess until events are applied.";
+        ? `Confidence: medium — the applied driver is calibrated to Yellowhammer's prior 12-month invoice history; expand the run with a weather or macro driver before stress-testing cash.`
+        : `Confidence: high on the baseline assumptions, low on any scenario claim — apply events from the picker to lift the confidence band on revenue, EBITDA, and operating-cash projections.`;
 
-  const memo = [headline, driverSentence, riskSentence, confidenceSentence].join(" ");
+  const memo = [
+    headline,
+    driverSentence,
+    operationsSentence,
+    riskSentence,
+    confidenceSentence,
+  ].join(" ");
   return {
     memo,
     wordCount: countWords(memo),
