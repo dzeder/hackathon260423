@@ -75,9 +75,21 @@ building is determined by which worktree / branch you are in:
 - Do not invent event templates beyond Appendix A
 - Do not use emojis in copilot output (CFO audience)
 - **Do not skip writing tests** — unit + E2E are REQUIRED
-- Do not add auth, persistence beyond the memory JSON, or multi-tenancy to the web app (out of scope)
 - Do not write cross-customer memory without going through `ohanafy-network` MCP's opt-in + anonymization pathway (§6.6)
 - Do not log PII or customer names to Datadog — use `customer_id_hash`
+- Do not store conversation state outside the customer's Salesforce org. Memory lives in `Plan_Conversation__c` / `Plan_Message__c` / `Plan_Usage_Daily__c` via `OhfyPlanMemoryStore` Apex REST. **Do not reintroduce an external DB** (Turso/Postgres/etc.) — see DECISION_LOG entries for the pivot rationale.
+
+## Production architecture (post-hackathon)
+
+The web app is now customer-bound, not just hackathon-demo. Key facts a future session needs:
+
+- **Persistence**: customer's Salesforce org via `OhfyPlanMemoryStore` Apex REST endpoint at `/services/apexrest/plan/memory`. Backed by 3 custom objects: `Plan_Conversation__c`, `Plan_Message__c`, `Plan_Usage_Daily__c`. Web app reaches them via `salesforceClient.callApexRest()`.
+- **Auth (SF gateway → Vercel)**: shared-secret header `X-Ohanafy-Client-Secret`. SF side reads from `Ohanafy_Copilot_Config__mdt.Default.Client_Secret__c`; Vercel reads `COPILOT_CLIENT_SECRET` (or `COPILOT_CLIENT_SECRETS` plural during rotation).
+- **Auth (Vercel → SF)**: Connected App + Client Credentials OAuth 2.0 flow. Same Connected App powers both Apex REST endpoints. Token cached in-process via `salesforceClient.ts`.
+- **Customer scoping**: every memory row carries `Customer_Id__c` (constant per Vercel deploy via `SF_CUSTOMER_ID`). Single-customer dedicated deploy today; multi-tenant becomes an additive change later.
+- **Models**: `claude-sonnet-4-6` default for orchestrator (~5× cheaper than Opus for tool-using work), `claude-haiku-4-5-20251001` for the cross-conversation relevance retriever.
+- **Cost guardrails**: per-user-per-day default 200 turns / $25 / $0.30 per turn. Env-tunable. Counters live in `Plan_Usage_Daily__c`.
+- **Runbook**: `docs/runbook.md` is the source of truth for setup, env vars, secret rotation, and triage.
 
 ## When stuck
 
