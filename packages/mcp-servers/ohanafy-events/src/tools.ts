@@ -35,13 +35,13 @@ export const ClassifyScenarioInput = z.object({
 
 export async function searchEventsTool(raw: unknown) {
   const input = SearchEventsInput.parse(raw);
-  const events = searchEvents(loadCatalog(), input);
+  const events = searchEvents(await loadCatalog(), input);
   return { events, count: events.length };
 }
 
 export async function getEventTool(raw: unknown) {
   const { id } = GetEventInput.parse(raw);
-  const event = getEvent(loadCatalog(), id);
+  const event = getEvent(await loadCatalog(), id);
   if (!event) {
     throw new Error(`Event not found: ${id}`);
   }
@@ -50,13 +50,13 @@ export async function getEventTool(raw: unknown) {
 
 export async function suggestEventsTool(raw: unknown) {
   const { months, avgRevenue, region, limit } = SuggestEventsInput.parse(raw);
-  const suggestions = suggestEvents(loadCatalog(), { months, avgRevenue, region }, limit);
+  const suggestions = suggestEvents(await loadCatalog(), { months, avgRevenue, region }, limit);
   return { suggestions, count: suggestions.length };
 }
 
 export async function classifyScenarioTool(raw: unknown) {
   const { prompt } = ClassifyScenarioInput.parse(raw);
-  return classifyScenario(loadCatalog(), prompt);
+  return classifyScenario(await loadCatalog(), prompt);
 }
 
 export const TOOL_REGISTRY = {
