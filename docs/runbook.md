@@ -93,7 +93,8 @@ Paste the output in BOTH places:
 | `SF_LOGIN_URL` | yes | Prod + Preview | `https://<my-domain>.my.salesforce.com` |
 | `SF_CONSUMER_KEY` | yes | Prod + Preview | Connected App consumer key |
 | `SF_CONSUMER_SECRET` | yes | Prod + Preview | Connected App consumer secret |
-| `SF_CUSTOMER_ID` | yes | Prod + Preview | Tenant label on every memory row |
+| `SF_CUSTOMER_ID` | yes | Prod + Preview | Tenant label on every memory row. Must match `Ohanafy_Copilot_Config__mdt.Default.Customer_Id__c` in the bound SF org. The route returns 503 if neither this env nor an `x-customer-id` header is supplied — there is no silent default. |
+| `COPILOT_PERSONA` | recommended | Prod + Preview | Customer-specific role line for the Claude system prompt (e.g. `"You are the Ohanafy Plan copilot for Acme Wines — a Napa wholesaler. Audience: CFO."`). Falls back to a customer-agnostic default. |
 | `DD_API_KEY` | optional | Prod | Datadog APM tracing |
 | `DD_ENV` | optional | Prod | `production`, `staging`, etc. |
 | `COPILOT_MAX_TURNS_PER_DAY` | optional | Prod | Daily turn cap (default 200) |
@@ -228,6 +229,50 @@ Daily budget $25 (default) = ~750 Sonnet turns or ~150 Opus turns per customer p
 - **Vercel function timeout**: 60s on Hobby, 300s on Pro. Multi-tool turns can hit 30-45s. Use Pro.
 - **Anthropic rate limits**: Tier 2 is 50 RPM on Opus, higher on Sonnet. The cost-per-turn cap usually trips first.
 - **`Plan_Message__c.Content__c`**: 131K chars per row. Multi-tool turns serialize tool_use + tool_result blocks as JSON, typically 5-30K. Plenty of headroom.
+
+## §15 Multi-customer operations
+
+### Deployment topology (decided)
+
+**One Vercel deployment per customer, one Salesforce org per customer.**
+
+- Each customer gets a dedicated Vercel project (or a dedicated production alias on a shared project) with their own `SF_CUSTOMER_ID`, `COPILOT_PERSONA`, `SF_CONSUMER_KEY`, `SF_CONSUMER_SECRET`, and `COPILOT_CLIENT_SECRET` set as Production env vars on that Vercel project.
+- Each customer's `Ohanafy_Copilot_Config__mdt.Default.Customer_Id__c` (in their SF org) is set to the same string as their Vercel `SF_CUSTOMER_ID`. `OhfyPlanMemoryStore` rejects any request whose body customerId does not match the configured value (see DECISION_LOG entry on P0-#3).
+- A single Vercel deploy serves exactly one customer. Cross-tenant leakage requires both the Vercel env to be wrong AND the SF bind to be wrong AND the per-query `Customer_Id__c` filter to fail — three independent layers.
+
+This is intentionally heavier on ops than a shared multi-tenant deploy. We accept that cost for the first 5 customers because the blast radius of any single-deploy compromise is bounded to one tenant. Multi-tenant via a shared Vercel + per-customer secret store (KV / Secrets Manager) is on the post-GA roadmap.
+
+### New-customer onboarding checklist
+
+Use `scripts/onboard-customer.sh <customer_id>` to walk through the steps; the script validates env, hits `/api/health`, and prints the Datadog filter for the new tenant's hashed id.
+
+1. **Salesforce side**
+   - [ ] Install/deploy the package into the customer's SF org: `sf project deploy start --source-dir force-app -o <new-org-alias>`
+   - [ ] Run Apex tests: `sf apex run test --test-level RunLocalTests -o <new-org-alias>`
+   - [ ] Create the Connected App in their org (§1) and capture Consumer Key / Consumer Secret
+   - [ ] Create the integration user, assign the permission set (§2)
+   - [ ] Set `Ohanafy_Copilot_Config__mdt.Default.Customer_Id__c` to a stable string (e.g. their SF org id, an internal customer code). This is the canonical id; it must match the Vercel env.
+   - [ ] Set `Ohanafy_Copilot_Config__mdt.Default.Client_Secret__c` to a freshly generated `openssl rand -hex 32`.
+2. **Vercel side**
+   - [ ] Create a new Vercel project (or new alias on a shared project) for this customer.
+   - [ ] Set every required env var from the table above. `SF_CUSTOMER_ID` must equal what was put into `Customer_Id__c` on the SF side. `COPILOT_PERSONA` should reflect the customer's business (no Yellowhammer/Birmingham strings unless the customer is actually Yellowhammer Beverage).
+   - [ ] Deploy to production: `vercel deploy --prod --yes` from `packages/web-app`.
+3. **Verification**
+   - [ ] Run `scripts/onboard-customer.sh <customer_id>` against the new deploy URL. It must pass `/api/health` with `salesforce.ok=true`, `gatewayAuth.ok=true`, `anthropic.ok=true`.
+   - [ ] Run the Playwright happy-path against the new URL: `cd packages/web-app && BASE_URL=<new-url> npm run e2e`.
+   - [ ] In Datadog, confirm `service:ohanafy-plan-webapp customer_id_hash:<hash>` is receiving spans. The script prints the hash.
+   - [ ] From customer-1's Vercel deploy, attempt a `/plan/memory` call with the new customer's id — must return 403 (the SF bind check rejects it).
+4. **Document**
+   - [ ] Append an entry to `DECISION_LOG.md` recording the onboarding date, the customer id (hashed), the SF org alias, and the Vercel project name.
+
+### Emergency: a customer's secret is compromised
+
+1. **Vercel**: rotate `COPILOT_CLIENT_SECRET` and `SF_CONSUMER_SECRET` on the affected project (see "Operations → Rotating" sections above).
+2. **Salesforce**: in the affected org, generate a new `Client_Secret__c` value in `Ohanafy_Copilot_Config__mdt.Default`; delete + recreate the Connected App if the OAuth secret was leaked.
+3. **Datadog**: query for any traffic on the old hashed id between the suspected breach time and now. Capture for the customer's incident report.
+4. **Notify the customer** within their contract's incident-disclosure window.
+
+Other customers are unaffected because each has their own Vercel project and SF org; there is no shared secret to rotate across the fleet.
 
 ## Future work (not blocking launch)
 

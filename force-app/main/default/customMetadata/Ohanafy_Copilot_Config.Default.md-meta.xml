@@ -6,4 +6,8 @@
         <field>Client_Secret__c</field>
         <value xsi:type="xsd:string"></value>
     </values>
+    <values>
+        <field>Customer_Id__c</field>
+        <value xsi:type="xsd:string"></value>
+    </values>
 </CustomMetadata>

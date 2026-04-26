@@ -31,6 +31,11 @@ global with sharing class OhfyPlanMemoryStore {
     private static final Integer MAX_HISTORY = 200;
     private static final Integer MAX_TURN_ENTRIES = 60;
 
+    // Tests inject a bound customerId without depending on deployed metadata.
+    // Production reads Ohanafy_Copilot_Config__mdt.Default.Customer_Id__c.
+    @TestVisible
+    private static String boundCustomerIdOverride = null;
+
     global class TurnEntry {
         public String role;            // 'user' | 'assistant'
         public String contentFormat;   // 'text' | 'blocks'
@@ -69,6 +74,15 @@ global with sharing class OhfyPlanMemoryStore {
         }
         if (String.isBlank(body.customerId)) {
             respondError(res, 400, 'customerId is required');
+            return;
+        }
+        // Defense in depth: when the org is bound to a specific customerId
+        // (production stance), reject requests that claim a different one.
+        // A misconfigured Vercel deploy or compromised shared secret cannot
+        // silently write to or read from the wrong tenant's bucket.
+        String boundId = getBoundCustomerId();
+        if (String.isNotBlank(boundId) && !boundId.equals(body.customerId)) {
+            respondError(res, 403, 'customerId does not match this org\'s bound customer');
             return;
         }
 
@@ -303,6 +317,14 @@ global with sharing class OhfyPlanMemoryStore {
     }
 
     // ---- helpers ----
+
+    private static String getBoundCustomerId() {
+        if (boundCustomerIdOverride != null) return boundCustomerIdOverride;
+        Ohanafy_Copilot_Config__mdt cfg = Ohanafy_Copilot_Config__mdt.getInstance('Default');
+        if (cfg == null) return null;
+        String configured = cfg.Customer_Id__c;
+        return String.isBlank(configured) ? null : configured;
+    }
 
     private static void respondData(RestResponse res, Map<String, Object> data) {
         res.statusCode = 200;

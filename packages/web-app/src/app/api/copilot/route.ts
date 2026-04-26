@@ -11,6 +11,7 @@ import { runThreeStatement } from "@/lib/threeStatement";
 import { PROMPT_VERSION, TOOL_SCHEMA_VERSION } from "@/lib/versions";
 import { runCopilotTurn } from "@/lib/copilotClaude";
 import { checkAuth } from "@/lib/copilotAuth";
+import { CustomerIdError, extractCustomerId } from "@/lib/customerId";
 import { logTurn } from "@/lib/copilotLog";
 import {
   appendTurn,
@@ -52,9 +53,29 @@ const VERSIONS = {
   toolSchemaVersion: TOOL_SCHEMA_VERSION,
 };
 
-function scopeFromRequest(userIdFromBody: string | undefined): Scope {
+// Resolve the calling customer's id. Order:
+//   1. x-customer-id header (used by Salesforce LWC -> Vercel calls).
+//   2. SF_CUSTOMER_ID env (used by single-tenant Vercel deploys).
+// If neither is present we refuse the request — silently writing to a
+// "default" tenant bucket is the failure mode that loses customer data.
+function scopeFromRequest(req: Request, userIdFromBody: string | undefined): Scope {
+  let customerId: string | undefined;
+  try {
+    customerId = extractCustomerId(req);
+  } catch (err) {
+    if (!(err instanceof CustomerIdError)) throw err;
+  }
+  if (!customerId) {
+    const envId = process.env.SF_CUSTOMER_ID?.trim();
+    if (envId) customerId = envId;
+  }
+  if (!customerId) {
+    throw new CustomerIdError(
+      "customer id missing: provide x-customer-id header or set SF_CUSTOMER_ID",
+    );
+  }
   return {
-    customerId: process.env.SF_CUSTOMER_ID ?? "yellowhammer",
+    customerId,
     userId: userIdFromBody ?? "demo",
   };
 }
@@ -67,7 +88,15 @@ export async function GET(req: Request) {
   }
   const url = new URL(req.url);
   const userId = url.searchParams.get("userId") ?? "demo";
-  const scope = scopeFromRequest(userId);
+  let scope: Scope;
+  try {
+    scope = scopeFromRequest(req, userId);
+  } catch (err) {
+    if (err instanceof CustomerIdError) {
+      return NextResponse.json({ error: err.message }, { status: 503 });
+    }
+    throw err;
+  }
 
   // When persistence isn't wired, return an empty thread so the UI still
   // renders — the conversation just won't survive reloads.
@@ -111,7 +140,15 @@ export async function POST(req: Request) {
     );
   }
 
-  const scope = scopeFromRequest(parsed.userId);
+  let scope: Scope;
+  try {
+    scope = scopeFromRequest(req, parsed.userId);
+  } catch (err) {
+    if (err instanceof CustomerIdError) {
+      return NextResponse.json({ error: err.message }, { status: 503 });
+    }
+    throw err;
+  }
   const scenarioContext = await buildScenarioContext(parsed);
   const persistenceOn = isPersistenceAvailable();
 
