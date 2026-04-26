@@ -1,3 +1,11 @@
+import {
+  createConnection,
+  PlanDecisionTypeEnum,
+  recordPlanScenarioDecision,
+  type RecordPlanScenarioDecisionInput,
+  type RecordPlanScenarioDecisionResult,
+} from "@ohanafy-plan/sf-client";
+import pino from "pino";
 import { z } from "zod";
 import { loadKnowledge, searchKnowledge } from "./knowledge.js";
 import {
@@ -7,6 +15,8 @@ import {
   type DecisionRecord,
 } from "./logic.js";
 import { sharedStore, MemoryStore } from "./store.js";
+
+const log = pino({ name: "ohanafy-memory.tools" });
 
 /** Every tool call must identify which customer org the request is for. */
 export const CustomerContextSchema = z.object({
@@ -31,6 +41,10 @@ export const RecordDecisionInput = CustomerContextSchema.extend({
   note: z.string().min(1).max(4000),
   author: z.string().optional(),
   tags: z.array(z.string()).default([]),
+  /** Required by Plan_Scenario_Decision__c picklist when persisting to Salesforce. Defaults to "accept". */
+  decisionType: PlanDecisionTypeEnum.default("accept"),
+  /** Forwarded to Salesforce as Applied_Event_Ids__c (comma-joined). */
+  appliedEventIds: z.array(z.string()).default([]),
 });
 
 export const ListDecisionsInput = CustomerContextSchema.extend({
@@ -47,10 +61,32 @@ export const SearchKnowledgeInput = z.object({
   limit: z.number().int().positive().max(20).default(3),
 });
 
-type Deps = { store: MemoryStore };
-const defaultDeps: Deps = { store: sharedStore };
+export type SfWriter = (
+  input: RecordPlanScenarioDecisionInput,
+) => Promise<RecordPlanScenarioDecisionResult | null>;
+
+type Deps = { store: MemoryStore; sfWriter?: SfWriter };
+
+/** Default SF writer: best-effort persistence to Plan_Scenario_Decision__c when SF_AUTH_URL is set. */
+async function defaultSfWriter(
+  input: RecordPlanScenarioDecisionInput,
+): Promise<RecordPlanScenarioDecisionResult | null> {
+  if (!process.env.SF_AUTH_URL) return null;
+  try {
+    const conn = await createConnection();
+    return await recordPlanScenarioDecision(conn, input);
+  } catch (err) {
+    log.warn(
+      { msg: "Plan_Scenario_Decision__c write failed; decision still in local store", err: String(err) },
+    );
+    return null;
+  }
+}
+
+const defaultDeps: Deps = { store: sharedStore, sfWriter: defaultSfWriter };
 
 export function makeHandlers(deps: Deps = defaultDeps) {
+  const sfWriter = deps.sfWriter ?? defaultSfWriter;
   return {
     async recordDecision(raw: unknown) {
       const input = RecordDecisionInput.parse(raw);
@@ -63,7 +99,21 @@ export function makeHandlers(deps: Deps = defaultDeps) {
         createdAt: new Date().toISOString(),
       };
       deps.store.append(record);
-      return { decision: record };
+
+      const sfRes = await sfWriter({
+        scenarioId: input.scenarioId,
+        decisionType: input.decisionType,
+        rationale: input.note,
+        appliedEventIds: input.appliedEventIds,
+        userId: input.author ?? input.customerId,
+      });
+
+      return {
+        decision: record,
+        salesforce: sfRes
+          ? { sfId: sfRes.sfId, decisionId: sfRes.decisionId }
+          : null,
+      };
     },
     async listDecisions(raw: unknown) {
       const { scenarioId } = ListDecisionsInput.parse(raw);
@@ -99,7 +149,7 @@ export async function searchKnowledgeTool(raw: unknown) {
 
 export const TOOL_REGISTRY = {
   record_decision: {
-    description: "Append a CFO/analyst note to a scenario's decision log.",
+    description: "Append a CFO/analyst note to a scenario's decision log. Persists locally and, when SF_AUTH_URL is set, also writes a Plan_Scenario_Decision__c row.",
     input: RecordDecisionInput,
     handler: recordDecisionTool,
   },

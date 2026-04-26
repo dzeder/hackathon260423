@@ -1,13 +1,14 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryStore } from "../src/store.js";
 import {
   CompareScenariosInput,
   TOOL_REGISTRY,
   compareScenariosTool,
   makeHandlers,
+  type SfWriter,
 } from "../src/tools.js";
 
 function freshStore() {
@@ -69,6 +70,64 @@ describe("ohanafy-memory tool handlers", () => {
       await expect(
         handlers.recordDecision({ scenarioId: "a", note: "x" }),
       ).rejects.toThrow(/customerId/);
+    });
+  });
+
+  describe("salesforce write-through (sfWriter dep)", () => {
+    let store: MemoryStore;
+
+    beforeEach(() => {
+      store = freshStore();
+    });
+
+    it("forwards note → rationale, defaults decisionType to accept, returns the SF id", async () => {
+      const sfWriter: SfWriter = vi.fn(async () => ({ sfId: "a01x", decisionId: "uuid-1" }));
+      const handlers = makeHandlers({ store, sfWriter });
+
+      const out = await handlers.recordDecision({
+        customerId: TENANT,
+        scenarioId: "iron-bowl",
+        note: "approved by CFO",
+        appliedEventIds: ["iron-bowl-2026"],
+      });
+
+      expect(sfWriter).toHaveBeenCalledTimes(1);
+      const arg = (sfWriter as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(arg).toMatchObject({
+        scenarioId: "iron-bowl",
+        decisionType: "accept",
+        rationale: "approved by CFO",
+        appliedEventIds: ["iron-bowl-2026"],
+      });
+      expect(out.salesforce).toEqual({ sfId: "a01x", decisionId: "uuid-1" });
+      expect(store.list()).toHaveLength(1);
+    });
+
+    it("returns salesforce: null when sfWriter declines (no SF_AUTH_URL)", async () => {
+      const sfWriter: SfWriter = vi.fn(async () => null);
+      const handlers = makeHandlers({ store, sfWriter });
+
+      const out = await handlers.recordDecision({
+        customerId: TENANT,
+        scenarioId: "x",
+        note: "no SF",
+      });
+
+      expect(out.salesforce).toBeNull();
+      expect(store.list()).toHaveLength(1);
+    });
+
+    it("Zod-rejects an invalid decisionType", async () => {
+      const sfWriter: SfWriter = vi.fn(async () => null);
+      const handlers = makeHandlers({ store, sfWriter });
+      await expect(
+        handlers.recordDecision({
+          customerId: TENANT,
+          scenarioId: "x",
+          note: "y",
+          decisionType: "definitely-not-valid",
+        }),
+      ).rejects.toThrow();
     });
   });
 
