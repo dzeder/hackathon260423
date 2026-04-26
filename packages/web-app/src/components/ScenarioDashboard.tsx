@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { ForecastMonth } from "@/data/baseline";
-import { yellowhammerProfile } from "@/data/baseline";
+import { customerProfile } from "@/data/baseline";
 import { applyEvents } from "@/lib/applyEvents";
 import { eventsCatalog } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
@@ -89,10 +89,10 @@ export function ScenarioDashboard({ baseline }: { baseline: ForecastMonth[] }) {
                 className="text-base font-semibold text-slate-50"
                 data-testid="dashboard-heading"
               >
-                {yellowhammerProfile.name} · Scenario planner
+                {customerProfile.name} · Scenario planner
               </h1>
               <p className="text-xs text-slate-400">
-                {yellowhammerProfile.hq} — 6-month horizon (May–Oct 2026) · USD thousands
+                {customerProfile.hq} — 6-month horizon (May–Oct 2026) · USD thousands
               </p>
             </div>
           </div>

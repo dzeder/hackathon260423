@@ -164,7 +164,7 @@ export const TOOL_REGISTRY = {
     handler: compareScenariosTool,
   },
   search_knowledge: {
-    description: "Search the Yellowhammer knowledge base (customer profile, domain playbooks, glossary) by free-text query. BM25-lite scoring over title + body + tags.",
+    description: "Search the customer's knowledge base (customer profile, domain playbooks, glossary) by free-text query. BM25-lite scoring over title + body + tags.",
     input: SearchKnowledgeInput,
     handler: searchKnowledgeTool,
   },

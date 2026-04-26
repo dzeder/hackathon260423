@@ -58,7 +58,7 @@ export function respond(q: CopilotQuery): CopilotResponse {
         `COGS delta: ${fmtPct(e?.cogsDeltaPct ?? 0)}`,
         `Source: ${e?.source}`,
       ],
-      citations: ["CFBD college football calendar", "§11 Yellowhammer profile"],
+      citations: ["CFBD college football calendar", "customer profile"],
     };
   }
 
@@ -102,7 +102,7 @@ export function respond(q: CopilotQuery): CopilotResponse {
   }
 
   return {
-    text: `I can answer questions about EBITDA, revenue, specific events (Iron Bowl, heat wave, hurricane), or downside risks. You have ${q.appliedEventIds.length} event(s) applied to scenario '${q.scenarioId}'.`,
+    text: `I can answer questions about EBITDA, revenue, specific events from the catalog, or downside risks. You have ${q.appliedEventIds.length} event(s) applied to scenario '${q.scenarioId}'.`,
     bullets: [
       `Applied events: ${q.appliedEventIds.length ? q.appliedEventIds.join(", ") : "none"}`,
       `Baseline EBITDA (6mo): ${fmtUsdK(b.ebitda)}`,

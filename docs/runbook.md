@@ -95,6 +95,8 @@ Paste the output in BOTH places:
 | `SF_CONSUMER_SECRET` | yes | Prod + Preview | Connected App consumer secret |
 | `SF_CUSTOMER_ID` | yes | Prod + Preview | Tenant label on every memory row. Must match `Ohanafy_Copilot_Config__mdt.Default.Customer_Id__c` in the bound SF org. The route returns 503 if neither this env nor an `x-customer-id` header is supplied — there is no silent default. |
 | `COPILOT_PERSONA` | recommended | Prod + Preview | Customer-specific role line for the Claude system prompt (e.g. `"You are the Ohanafy Plan copilot for Acme Wines — a Napa wholesaler. Audience: CFO."`). Falls back to a customer-agnostic default. |
+| `NEXT_PUBLIC_CUSTOMER_NAME` | recommended | Prod + Preview | Display name shown in the dashboard heading. Inlined at build time (Next.js `NEXT_PUBLIC_*` rule). Defaults to `Yellowhammer Beverage` for the original demo deploy. |
+| `NEXT_PUBLIC_CUSTOMER_HQ` | recommended | Prod + Preview | Display HQ city shown next to the heading. Defaults to `Birmingham, AL`. Build-time inline like above. |
 | `DD_API_KEY` | optional | Prod | Datadog APM tracing |
 | `DD_ENV` | optional | Prod | `production`, `staging`, etc. |
 | `COPILOT_MAX_TURNS_PER_DAY` | optional | Prod | Daily turn cap (default 200) |
@@ -255,7 +257,7 @@ Use `scripts/onboard-customer.sh <customer_id>` to walk through the steps; the s
    - [ ] Set `Ohanafy_Copilot_Config__mdt.Default.Client_Secret__c` to a freshly generated `openssl rand -hex 32`.
 2. **Vercel side**
    - [ ] Create a new Vercel project (or new alias on a shared project) for this customer.
-   - [ ] Set every required env var from the table above. `SF_CUSTOMER_ID` must equal what was put into `Customer_Id__c` on the SF side. `COPILOT_PERSONA` should reflect the customer's business (no Yellowhammer/Birmingham strings unless the customer is actually Yellowhammer Beverage).
+   - [ ] Set every required env var from the table above. `SF_CUSTOMER_ID` must equal what was put into `Customer_Id__c` on the SF side. `COPILOT_PERSONA` should reflect the customer's business (no Yellowhammer/Birmingham strings unless the customer is actually Yellowhammer Beverage). Set `NEXT_PUBLIC_CUSTOMER_NAME` and `NEXT_PUBLIC_CUSTOMER_HQ` so the dashboard heading reflects the customer — these are inlined at build time, so the Vercel build for that customer must have them set before deploy.
    - [ ] Deploy to production: `vercel deploy --prod --yes` from `packages/web-app`.
 3. **Verification**
    - [ ] Run `scripts/onboard-customer.sh <customer_id>` against the new deploy URL. It must pass `/api/health` with `salesforce.ok=true`, `gatewayAuth.ok=true`, `anthropic.ok=true`.

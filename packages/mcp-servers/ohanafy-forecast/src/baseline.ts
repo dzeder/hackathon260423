@@ -26,7 +26,7 @@ type SeedShape = {
   }>;
 };
 
-/** Yellowhammer assumptions used to derive COGS / OpEx / EBITDA from invoice revenue. */
+/** Demo-customer assumptions used to derive COGS / OpEx / EBITDA from invoice revenue. */
 const ASSUMPTIONS = { gmPct: 34.0, opexRatioPct: 17.9 } as const;
 
 const HORIZON_MONTHS = 6;
