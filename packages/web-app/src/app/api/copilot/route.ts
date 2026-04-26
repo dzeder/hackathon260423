@@ -1,19 +1,30 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDataSource } from "@/data";
+import type { ForecastMonth } from "@/data/baseline";
 import { applyEvents } from "@/lib/applyEvents";
 import { respond } from "@/lib/copilot";
-import { respondLive } from "@/lib/copilotLive";
 import { eventsCatalog } from "@/lib/eventsCatalog";
 import { log } from "@/lib/log";
 import { METRICS, recordLatency } from "@/lib/metrics";
 import { runThreeStatement } from "@/lib/threeStatement";
-import {
-  formatToolsCalled,
-  recordTrace,
-  type ToolCallTrace,
-} from "@/lib/toolCallTrace";
 import { PROMPT_VERSION, TOOL_SCHEMA_VERSION } from "@/lib/versions";
+import { runCopilotTurn } from "@/lib/copilotClaude";
+import { checkAuth } from "@/lib/copilotAuth";
+import { logTurn } from "@/lib/copilotLog";
+import {
+  appendTurn,
+  getDailyUsage,
+  getOrCreateActive,
+  incrementUsage,
+  isPersistenceAvailable,
+  listThreads,
+  loadHistoryAsApiMessages,
+  loadHistoryForDisplay,
+  startNewThread,
+  type Scope,
+} from "@/lib/copilotMemory";
+import { formatRecallForPrompt, recallForUser } from "@/lib/copilotRecall";
 
 export const runtime = "nodejs";
 
@@ -21,14 +32,78 @@ const Body = z.object({
   prompt: z.string().min(1).max(2000),
   scenarioId: z.string().min(1),
   appliedEventIds: z.array(z.string()).default([]),
+  conversationId: z.string().optional(),
+  newThread: z.boolean().optional(),
+  userId: z.string().optional(),
+  // Optional model override — useful for flagged-hard turns to use Opus.
+  model: z.string().optional(),
 });
+
+const MAX_HISTORY_FOR_REPLAY = 30;
+
+// Per-user-per-day hard caps. Configurable via env so different customers can
+// buy different ceilings without a code change.
+const MAX_TURNS_PER_DAY = Number(process.env.COPILOT_MAX_TURNS_PER_DAY ?? "200");
+const MAX_COST_USD_PER_DAY = Number(process.env.COPILOT_MAX_COST_USD_PER_DAY ?? "25");
+const MAX_COST_USD_PER_TURN = Number(process.env.COPILOT_MAX_COST_USD_PER_TURN ?? "0.30");
+
+const VERSIONS = {
+  promptVersion: PROMPT_VERSION,
+  toolSchemaVersion: TOOL_SCHEMA_VERSION,
+};
+
+function scopeFromRequest(userIdFromBody: string | undefined): Scope {
+  return {
+    customerId: process.env.SF_CUSTOMER_ID ?? "yellowhammer",
+    userId: userIdFromBody ?? "demo",
+  };
+}
+
+// GET /api/copilot?userId=...[&conversationId=...][&startNew=1]
+export async function GET(req: Request) {
+  const auth = checkAuth(req);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.reason }, { status: auth.status });
+  }
+  const url = new URL(req.url);
+  const userId = url.searchParams.get("userId") ?? "demo";
+  const scope = scopeFromRequest(userId);
+
+  // When persistence isn't wired, return an empty thread so the UI still
+  // renders — the conversation just won't survive reloads.
+  if (!isPersistenceAvailable()) {
+    return NextResponse.json({
+      conversationId: "transient",
+      messages: [],
+      threads: [],
+      persistence: "disabled",
+    });
+  }
+
+  const startNew = url.searchParams.get("startNew") === "1";
+  let conversationId = url.searchParams.get("conversationId");
+  if (startNew) {
+    conversationId = await startNewThread(scope);
+  } else if (!conversationId) {
+    conversationId = await getOrCreateActive(scope);
+  }
+  const [messages, threads] = await Promise.all([
+    loadHistoryForDisplay(conversationId, scope, 100),
+    listThreads(scope, 15),
+  ]);
+  return NextResponse.json({ conversationId, messages, threads });
+}
 
 export async function POST(req: Request) {
   const startMs = performance.now();
+  const auth = checkAuth(req);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.reason }, { status: auth.status });
+  }
+
   let parsed: z.infer<typeof Body>;
   try {
-    const raw = await req.json();
-    parsed = Body.parse(raw);
+    parsed = Body.parse(await req.json());
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "invalid body" },
@@ -36,87 +111,281 @@ export async function POST(req: Request) {
     );
   }
 
-  const traces: ToolCallTrace[] = [];
+  const scope = scopeFromRequest(parsed.userId);
+  const scenarioContext = await buildScenarioContext(parsed);
+  const persistenceOn = isPersistenceAvailable();
 
-  const baseline = await getDataSource().getBaseline();
-  const appliedEvents = eventsCatalog.filter((e) =>
-    parsed.appliedEventIds.includes(e.id),
-  );
-  const { result: scenario, trace: applyTrace } = await recordTrace(
-    "apply_events",
-    () => applyEvents(baseline, appliedEvents),
-    { input: { eventIds: parsed.appliedEventIds } },
-  );
-  traces.push(applyTrace);
+  // Conversation resolution up front so all code paths share one id.
+  let conversationId = parsed.conversationId ?? null;
+  if (persistenceOn) {
+    if (parsed.newThread || !conversationId) {
+      conversationId = parsed.newThread
+        ? await startNewThread(scope)
+        : await getOrCreateActive(scope);
+    }
+  } else {
+    conversationId = conversationId ?? "transient";
+  }
 
-  const { result: threeStatement, trace: tsTrace } = await recordTrace(
-    "run_three_statement",
-    () => runThreeStatement(scenario),
-  );
-  traces.push(tsTrace);
+  // Rate / cost guardrails. Skipped when persistence is off — the counter
+  // lives in Salesforce.
+  const usage = persistenceOn
+    ? await getDailyUsage(scope)
+    : { turnCount: 0, costUsd: 0 };
+  if (usage.turnCount >= MAX_TURNS_PER_DAY) {
+    recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
+      "source:rate_limited",
+    ]);
+    return NextResponse.json(
+      {
+        error: "rate_limit_exceeded",
+        detail: `Daily turn cap reached (${MAX_TURNS_PER_DAY}). Resets 00:00 UTC.`,
+        conversationId,
+        ...VERSIONS,
+      },
+      { status: 429 },
+    );
+  }
+  if (usage.costUsd >= MAX_COST_USD_PER_DAY) {
+    recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
+      "source:cost_capped",
+    ]);
+    return NextResponse.json(
+      {
+        error: "cost_cap_exceeded",
+        detail: `Daily spend cap reached ($${usage.costUsd.toFixed(2)} of $${MAX_COST_USD_PER_DAY.toFixed(2)}). Resets 00:00 UTC.`,
+        conversationId,
+        ...VERSIONS,
+      },
+      { status: 429 },
+    );
+  }
 
-  const query = {
-    prompt: parsed.prompt,
-    scenarioId: parsed.scenarioId,
-    appliedEventIds: parsed.appliedEventIds,
-    baseline,
-    scenario,
-    threeStatement,
-  };
+  // No API key -> canned path. Persists when the SF memory store is wired.
+  if (!process.env.ANTHROPIC_API_KEY) {
+    const canned = await respondCanned(parsed);
+    if (persistenceOn) {
+      try {
+        await appendTurn(conversationId, scope, [
+          { role: "user", content: [{ type: "text", text: parsed.prompt }] },
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  text: canned.text,
+                  bullets: canned.bullets,
+                  citations: canned.citations,
+                }),
+              },
+            ],
+          },
+        ]);
+        await incrementUsage(scope, 0);
+      } catch (persistErr) {
+        log.warn(
+          "copilot: canned persist failed",
+          persistErr instanceof Error ? persistErr.message : persistErr,
+        );
+      }
+    }
+    recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
+      "source:canned",
+    ]);
+    return NextResponse.json({
+      ...canned,
+      source: "canned",
+      conversationId,
+      ...VERSIONS,
+    });
+  }
 
-  const versions = {
-    promptVersion: PROMPT_VERSION,
-    toolSchemaVersion: TOOL_SCHEMA_VERSION,
-  };
-
-  let source: "live" | "canned" = "canned";
-  let body: Record<string, unknown>;
-
-  if (process.env.ANTHROPIC_API_KEY) {
+  // Live turn.
+  const priorHistory = persistenceOn
+    ? await loadHistoryAsApiMessages(conversationId, scope, MAX_HISTORY_FOR_REPLAY)
+    : [];
+  let recallBlock: string | null = null;
+  if (persistenceOn) {
     try {
-      const { result: live, trace: liveTrace } = await recordTrace(
-        "respond_live",
-        () => respondLive(query),
-        { input: { prompt: parsed.prompt, scenarioId: parsed.scenarioId } },
-      );
-      traces.push(liveTrace);
-      body = {
-        ...live,
-        source: "live",
-        traces,
-        toolsCalled: formatToolsCalled(traces),
-        ...versions,
-      };
-      source = "live";
-      recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
-        `source:${source}`,
-      ]);
-      return NextResponse.json(body);
+      const recalled = await recallForUser(scope, conversationId, parsed.prompt);
+      recallBlock = formatRecallForPrompt(recalled);
     } catch (err) {
-      const maybeTrace = (err as { trace?: ToolCallTrace }).trace;
-      if (maybeTrace) traces.push(maybeTrace);
-      log.warn(
-        "copilot: live call failed, falling back to canned",
-        err instanceof Error ? err.message : err,
-      );
+      log.warn("copilot: recall failed", err instanceof Error ? err.message : err);
     }
   }
 
-  const { result: canned, trace: cannedTrace } = await recordTrace(
-    "respond_canned",
-    () => respond(query),
-    { input: { prompt: parsed.prompt, scenarioId: parsed.scenarioId } },
+  try {
+    const turn = await runCopilotTurn(
+      {
+        userText: parsed.prompt,
+        priorHistory,
+        recallBlock,
+        scenarioContext,
+        model: parsed.model,
+      },
+      { maxCostUsd: MAX_COST_USD_PER_TURN },
+    );
+
+    if (persistenceOn) {
+      try {
+        await appendTurn(conversationId, scope, turn.newMessages);
+        await incrementUsage(scope, turn.costUsd);
+      } catch (persistErr) {
+        log.warn(
+          "copilot: persist failed",
+          persistErr instanceof Error ? persistErr.message : persistErr,
+        );
+      }
+    }
+
+    const shaped = coerceCopilotShape(turn.finalText);
+    const latencyMs = Math.round(performance.now() - startMs);
+
+    logTurn({
+      customerId: scope.customerId,
+      userId: scope.userId,
+      conversationId,
+      model: turn.model,
+      iterations: turn.iterations,
+      stopReason: turn.stopReason,
+      inputTokens: turn.usage.inputTokens,
+      outputTokens: turn.usage.outputTokens,
+      cacheReadTokens: turn.usage.cacheReadTokens,
+      cacheCreationTokens: turn.usage.cacheCreationTokens,
+      costUsd: turn.costUsd,
+      costCapHit: turn.costCapHit,
+      toolNames: turn.toolCalls.map((c) => c.name),
+      latencyMs,
+      source: "live",
+    });
+
+    recordLatency(METRICS.COPILOT_LATENCY, latencyMs, ["source:live"]);
+
+    return NextResponse.json({
+      ...shaped,
+      source: "live",
+      conversationId,
+      toolCalls: turn.toolCalls.map((c) => ({
+        name: c.name,
+        ok: c.ok,
+        elapsedMs: c.elapsedMs,
+      })),
+      toolsCalled: turn.toolCalls.map((c) => c.name).join(", ") || "(none)",
+      usage: turn.usage,
+      iterations: turn.iterations,
+      model: turn.model,
+      costUsd: turn.costUsd,
+      costCapHit: turn.costCapHit,
+      ...VERSIONS,
+    });
+  } catch (err) {
+    log.error("copilot_live_turn_failed", {
+      conversationId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    const canned = await respondCanned(parsed);
+    recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
+      "source:canned",
+      "fallback:1",
+    ]);
+    return NextResponse.json({
+      ...canned,
+      source: "canned",
+      conversationId,
+      error: err instanceof Error ? err.message : "unknown error",
+      ...VERSIONS,
+    });
+  }
+}
+
+async function buildScenarioContext(body: z.infer<typeof Body>): Promise<string> {
+  const appliedEvents = eventsCatalog.filter((e) =>
+    body.appliedEventIds.includes(e.id),
   );
-  traces.push(cannedTrace);
-  body = {
-    ...canned,
-    source: "canned",
-    traces,
-    toolsCalled: formatToolsCalled(traces),
-    ...versions,
-  };
-  recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
-    `source:${source}`,
-  ]);
-  return NextResponse.json(body);
+  const baseline = await getDataSource().getBaseline();
+  const scenario = applyEvents(baseline, appliedEvents);
+  const threeStatement = runThreeStatement(scenario);
+
+  const bTot = totals(baseline);
+  const sTot = totals(scenario);
+  const dRev = bTot.revenue ? ((sTot.revenue - bTot.revenue) / bTot.revenue) * 100 : 0;
+  const dEbitda = bTot.ebitda ? ((sTot.ebitda - bTot.ebitda) / bTot.ebitda) * 100 : 0;
+
+  const eventLines = appliedEvents
+    .map(
+      (e) =>
+        `  - ${e.id} (${e.month}, ${e.category}): Δrev ${e.revenueDeltaPct}%, ΔCOGS ${e.cogsDeltaPct}%, Δopex $${e.opexDeltaAbs}k. Source: ${e.source}`,
+    )
+    .join("\n");
+
+  return [
+    `Scenario id: ${body.scenarioId}`,
+    "Horizon: 6 months (May–Oct 2026). Units: USD thousands for money, cases for volume.",
+    `Baseline 6mo totals: revenue $${Math.round(bTot.revenue)}k · COGS $${Math.round(bTot.cogs)}k · opex $${Math.round(bTot.opex)}k · EBITDA $${Math.round(bTot.ebitda)}k.`,
+    `Scenario 6mo totals: revenue $${Math.round(sTot.revenue)}k · EBITDA $${Math.round(sTot.ebitda)}k (Δrev ${dRev.toFixed(1)}%, ΔEBITDA ${dEbitda.toFixed(1)}%).`,
+    `Cash from operations (6mo): $${Math.round(threeStatement.cash.operating)}k.`,
+    `Applied event ids: [${body.appliedEventIds.join(", ") || "(none)"}]`,
+    appliedEvents.length ? "Applied event detail:" : "",
+    eventLines,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function totals(forecast: ForecastMonth[]) {
+  return forecast.reduce(
+    (acc, m) => ({
+      revenue: acc.revenue + m.revenue,
+      cogs: acc.cogs + m.cogs,
+      opex: acc.opex + m.opex,
+      gm: acc.gm + m.gm,
+      ebitda: acc.ebitda + m.ebitda,
+    }),
+    { revenue: 0, cogs: 0, opex: 0, gm: 0, ebitda: 0 },
+  );
+}
+
+async function respondCanned(body: z.infer<typeof Body>) {
+  const appliedEvents = eventsCatalog.filter((e) =>
+    body.appliedEventIds.includes(e.id),
+  );
+  const baseline = await getDataSource().getBaseline();
+  const scenario = applyEvents(baseline, appliedEvents);
+  const threeStatement = runThreeStatement(scenario);
+  return respond({
+    prompt: body.prompt,
+    scenarioId: body.scenarioId,
+    appliedEventIds: body.appliedEventIds,
+    baseline,
+    scenario,
+    threeStatement,
+  });
+}
+
+type CopilotShape = { text: string; bullets: string[]; citations: string[] };
+
+function coerceCopilotShape(raw: string): CopilotShape {
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      const parsed = JSON.parse(raw.slice(start, end + 1));
+      if (
+        parsed &&
+        typeof parsed.text === "string" &&
+        Array.isArray(parsed.bullets) &&
+        Array.isArray(parsed.citations)
+      ) {
+        return {
+          text: parsed.text,
+          bullets: parsed.bullets.filter((b: unknown) => typeof b === "string"),
+          citations: parsed.citations.filter((c: unknown) => typeof c === "string"),
+        };
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return { text: raw.trim(), bullets: [], citations: [] };
 }

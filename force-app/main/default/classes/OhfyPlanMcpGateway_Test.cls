@@ -110,7 +110,7 @@ private class OhfyPlanMcpGateway_Test {
 
         Test.startTest();
         String body = OhfyPlanMcpGateway.invokeCopilot(
-            'What if the Iron Bowl lands?', 'yellowhammer-6mo', 'iron-bowl-2026'
+            'What if the Iron Bowl lands?', 'yellowhammer-6mo', 'iron-bowl-2026', null
         );
         Test.stopTest();
 
@@ -118,10 +118,23 @@ private class OhfyPlanMcpGateway_Test {
     }
 
     @IsTest
+    static void invokeCopilot_withConversationId_passesThrough() {
+        Test.setMock(HttpCalloutMock.class, new CopilotMock());
+
+        Test.startTest();
+        String body = OhfyPlanMcpGateway.invokeCopilot(
+            'follow up?', 'yellowhammer-6mo', '', 'conv-abc-123'
+        );
+        Test.stopTest();
+
+        System.assert(body.contains('"source":"canned"'), 'response passes through when conversationId provided');
+    }
+
+    @IsTest
     static void invokeCopilot_blankPrompt_throws() {
         Boolean threw = false;
         try {
-            OhfyPlanMcpGateway.invokeCopilot('', 'yellowhammer-6mo', '');
+            OhfyPlanMcpGateway.invokeCopilot('', 'yellowhammer-6mo', '', null);
         } catch (AuraHandledException e) {
             threw = true;
         }
@@ -132,10 +145,44 @@ private class OhfyPlanMcpGateway_Test {
     static void invokeCopilot_blankScenario_throws() {
         Boolean threw = false;
         try {
-            OhfyPlanMcpGateway.invokeCopilot('hello', '', '');
+            OhfyPlanMcpGateway.invokeCopilot('hello', '', '', null);
         } catch (AuraHandledException e) {
             threw = true;
         }
         System.assertEquals(true, threw, 'blank scenarioId must raise AuraHandledException');
+    }
+
+    private class HistoryMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest req) {
+            System.assertEquals('GET', req.getMethod(), 'history uses GET');
+            System.assert(req.getEndpoint().contains('/api/copilot'), 'routes to copilot path');
+            HttpResponse res = new HttpResponse();
+            res.setStatusCode(200);
+            res.setStatus('OK');
+            res.setBody('{"conversationId":"c1","messages":[],"threads":[]}');
+            return res;
+        }
+    }
+
+    @IsTest
+    static void loadActiveThread_success_returnsBody() {
+        Test.setMock(HttpCalloutMock.class, new HistoryMock());
+
+        Test.startTest();
+        String body = OhfyPlanMcpGateway.loadActiveThread();
+        Test.stopTest();
+
+        System.assert(body.contains('"conversationId"'));
+    }
+
+    @IsTest
+    static void startNewThread_success_returnsBody() {
+        Test.setMock(HttpCalloutMock.class, new HistoryMock());
+
+        Test.startTest();
+        String body = OhfyPlanMcpGateway.startNewThread();
+        Test.stopTest();
+
+        System.assert(body.contains('"conversationId"'));
     }
 }
