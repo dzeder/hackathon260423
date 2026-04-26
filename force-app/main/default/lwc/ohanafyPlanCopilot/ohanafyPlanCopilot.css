@@ -204,6 +204,43 @@
 .ohfy-copilot__form { display: flex; flex-direction: column; gap: 0.4rem; }
 .ohfy-copilot__textarea { --slds-c-textarea-color-background: #0c152a; }
 
+/* Thread message bubbles */
+.ohfy-copilot__bubble {
+    border-radius: 10px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--ohfy-text);
+}
+.ohfy-copilot__bubble_user {
+    background: rgba(99, 102, 241, 0.12);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    margin-left: 2rem;
+}
+.ohfy-copilot__bubble_assistant {
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid var(--ohfy-border);
+    margin-right: 2rem;
+}
+.ohfy-copilot__user-text { margin: 0; }
+
+.ohfy-copilot__header-actions { display: flex; gap: 0.25rem; align-items: center; }
+.ohfy-copilot__new-chat {
+    background: rgba(148, 163, 184, 0.1);
+    border: 1px solid var(--ohfy-border);
+    border-radius: 6px;
+    color: var(--ohfy-text-muted);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.25rem 0.55rem;
+    cursor: pointer;
+}
+.ohfy-copilot__new-chat:hover {
+    color: var(--ohfy-text);
+    border-color: var(--ohfy-text-dim);
+}
 
 /* Grounding (in-org knowledge sources) */
 .ohfy-copilot__grounding {

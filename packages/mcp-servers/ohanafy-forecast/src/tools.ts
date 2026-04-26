@@ -33,19 +33,19 @@ export const SnapshotInput = CustomerContextSchema.extend({
 
 export async function applyEventTool(raw: unknown) {
   const { events } = ApplyEventInput.parse(raw);
-  const forecast = applyEvents(loadBaseline(), events);
+  const forecast = applyEvents(await loadBaseline(), events);
   return { forecast, eventCount: events.length };
 }
 
 export async function runThreeStatementTool(raw: unknown) {
   const { events } = RunThreeStatementInput.parse(raw);
-  const forecast = applyEvents(loadBaseline(), events);
+  const forecast = applyEvents(await loadBaseline(), events);
   return runThreeStatement(forecast);
 }
 
 export async function snapshotTool(raw: unknown) {
   const { events } = SnapshotInput.parse(raw);
-  return snapshotScenario(loadBaseline(), events);
+  return snapshotScenario(await loadBaseline(), events);
 }
 
 export const TOOL_REGISTRY = {

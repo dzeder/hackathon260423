@@ -20,15 +20,23 @@
                     <div>
                         <p class="ohfy-copilot__eyebrow">Copilot</p>
                         <p class="ohfy-copilot__title">Ask about this scenario</p>
-                        <p class="ohfy-copilot__sub">Grounded in baseline + {eventCountLabel}.</p>
+                        <p class="ohfy-copilot__sub">Grounded in baseline + {eventCountLabel}{threadCountLabel}.</p>
                     </div>
-                    <button
-                        type="button"
-                        class="ohfy-copilot__close"
-                        onclick={handleClose}
-                        aria-label="Close copilot"
-                        data-testid="copilot-close"
-                    >×</button>
+                    <div class="ohfy-copilot__header-actions">
+                        <button
+                            type="button"
+                            class="ohfy-copilot__new-chat"
+                            onclick={handleNewChat}
+                            data-testid="copilot-new-chat"
+                        >New chat</button>
+                        <button
+                            type="button"
+                            class="ohfy-copilot__close"
+                            onclick={handleClose}
+                            aria-label="Close copilot"
+                            data-testid="copilot-close"
+                        >×</button>
+                    </div>
                 </header>
 
                 <div class="ohfy-copilot__scenario">
@@ -54,18 +62,20 @@
                     </template>
                 </div>
 
-                <div class="ohfy-copilot__suggestions" data-testid="copilot-suggestions">
-                    <template for:each={suggestions} for:item="suggestion">
-                        <button
-                            key={suggestion}
-                            type="button"
-                            class="ohfy-copilot__suggestion"
-                            data-value={suggestion}
-                            onclick={handleSuggestion}
-                            disabled={isLoading}
-                        >{suggestion}</button>
-                    </template>
-                </div>
+                <template lwc:if={showEmpty}>
+                    <div class="ohfy-copilot__suggestions" data-testid="copilot-suggestions">
+                        <template for:each={suggestions} for:item="suggestion">
+                            <button
+                                key={suggestion}
+                                type="button"
+                                class="ohfy-copilot__suggestion"
+                                data-value={suggestion}
+                                onclick={handleSuggestion}
+                                disabled={isLoading}
+                            >{suggestion}</button>
+                        </template>
+                    </div>
+                </template>
 
                 <div class="ohfy-copilot__stream">
                     <template lwc:if={hasGroundingArticles}>
@@ -87,24 +97,36 @@
                         <div class="ohfy-copilot__error" role="alert" data-testid="copilot-error">{errorMessage}</div>
                     </template>
 
-                    <template lwc:if={hasResponse}>
-                        <article class="ohfy-copilot__response" data-testid="copilot-response">
-                            <span class={sourceBadgeClass}>{sourceLabel}</span>
-                            <p class="ohfy-copilot__response-text">{response.text}</p>
-                            <template lwc:if={response.bullets.length}>
-                                <ul class="ohfy-copilot__bullets">
-                                    <template for:each={response.bullets} for:item="bullet">
-                                        <li key={bullet}>{bullet}</li>
-                                    </template>
-                                </ul>
+                    <template for:each={enrichedMessages} for:item="msg">
+                        <article
+                            key={msg.id}
+                            class={msg.bubbleClass}
+                            data-role={msg.role}
+                            data-testid="copilot-message"
+                        >
+                            <template lwc:if={msg.isUser}>
+                                <p class="ohfy-copilot__user-text">{msg.text}</p>
                             </template>
-                            <template lwc:if={response.citations.length}>
-                                <p class="ohfy-copilot__sources">
-                                    Sources:
-                                    <template for:each={response.citations} for:item="cite">
-                                        <span key={cite} class="ohfy-copilot__source"> · {cite}</span>
-                                    </template>
-                                </p>
+                            <template lwc:else>
+                                <template lwc:if={msg.source}>
+                                    <span class={msg.sourceBadgeClass}>{msg.sourceLabel}</span>
+                                </template>
+                                <p class="ohfy-copilot__response-text">{msg.text}</p>
+                                <template lwc:if={msg.hasBullets}>
+                                    <ul class="ohfy-copilot__bullets">
+                                        <template for:each={msg.bullets} for:item="bullet">
+                                            <li key={bullet}>{bullet}</li>
+                                        </template>
+                                    </ul>
+                                </template>
+                                <template lwc:if={msg.hasCitations}>
+                                    <p class="ohfy-copilot__sources">
+                                        Sources:
+                                        <template for:each={msg.citations} for:item="cite">
+                                            <span key={cite} class="ohfy-copilot__source"> · {cite}</span>
+                                        </template>
+                                    </p>
+                                </template>
                             </template>
                         </article>
                     </template>
@@ -119,9 +141,10 @@
                         name="prompt"
                         label="Ask the copilot"
                         variant="label-hidden"
-                        placeholder="Ask about EBITDA, revenue, or specific events…"
+                        placeholder={promptPlaceholder}
                         value={prompt}
                         onchange={handlePromptChange}
+                        disabled={isLoading}
                         class="ohfy-copilot__textarea"
                         data-testid="copilot-prompt"
                     ></lightning-textarea>

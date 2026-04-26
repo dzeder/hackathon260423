@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Key__c</fullName>
+    <description>Unique upsert key — &lt;customer_id&gt;|&lt;user_id&gt;|&lt;YYYY-MM-DD&gt;. Composed by the Apex memory store on each increment.</description>
+    <externalId>true</externalId>
+    <label>Key</label>
+    <length>200</length>
+    <required>true</required>
+    <type>Text</type>
+    <unique>true</unique>
+</CustomField>
