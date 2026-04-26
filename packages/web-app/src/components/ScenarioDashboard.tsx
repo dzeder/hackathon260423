@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { baselineForecast, yellowhammerProfile } from "@/data/baseline";
+import type { ForecastMonth } from "@/data/baseline";
+import { yellowhammerProfile } from "@/data/baseline";
 import { applyEvents } from "@/lib/applyEvents";
 import { eventsCatalog } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
@@ -30,7 +31,7 @@ function pctDelta(a: number, b: number): { label: string; positive: boolean } {
   return { label: `${sign}${d.toFixed(1)}%`, positive: d >= 0 };
 }
 
-export function ScenarioDashboard() {
+export function ScenarioDashboard({ baseline }: { baseline: ForecastMonth[] }) {
   const [appliedIds, setAppliedIds] = useState<string[]>([]);
 
   const appliedEvents = useMemo(
@@ -39,8 +40,8 @@ export function ScenarioDashboard() {
   );
 
   const scenarioMonths = useMemo(
-    () => applyEvents(baselineForecast, appliedEvents),
-    [appliedEvents],
+    () => applyEvents(baseline, appliedEvents),
+    [baseline, appliedEvents],
   );
 
   const threeStatement = useMemo(
@@ -48,11 +49,11 @@ export function ScenarioDashboard() {
     [scenarioMonths],
   );
 
-  const baselineRevenue = sum(baselineForecast, "revenue");
+  const baselineRevenue = sum(baseline, "revenue");
   const scenarioRevenue = sum(scenarioMonths, "revenue");
-  const baselineEbitda = sum(baselineForecast, "ebitda");
+  const baselineEbitda = sum(baseline, "ebitda");
   const scenarioEbitda = sum(scenarioMonths, "ebitda");
-  const baselineGm = sum(baselineForecast, "gm");
+  const baselineGm = sum(baseline, "gm");
   const scenarioGm = sum(scenarioMonths, "gm");
 
   const revenueDelta = pctDelta(scenarioRevenue, baselineRevenue);
@@ -139,15 +140,15 @@ export function ScenarioDashboard() {
           </section>
 
           <Card title="Revenue — baseline vs scenario" subtitle="Monthly, $ thousands">
-            <BaselineChart baseline={baselineForecast} scenario={scenarioMonths} />
+            <BaselineChart baseline={baseline} scenario={scenarioMonths} />
           </Card>
 
           <section className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <Card title="EBITDA per month" subtitle="Red bars = below baseline">
-              <EbitdaChart baseline={baselineForecast} scenario={scenarioMonths} />
+              <EbitdaChart baseline={baseline} scenario={scenarioMonths} />
             </Card>
             <Card title="Gross margin %" subtitle="Scenario vs baseline">
-              <MarginChart baseline={baselineForecast} scenario={scenarioMonths} />
+              <MarginChart baseline={baseline} scenario={scenarioMonths} />
             </Card>
           </section>
 

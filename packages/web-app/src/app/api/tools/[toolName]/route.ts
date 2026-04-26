@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { baselineForecast } from "@/data/baseline";
+import { getDataSource } from "@/data";
 import { getRateLimit, isToolEnabled } from "@/lib/agentConfig";
 import { applyEvents } from "@/lib/applyEvents";
 import { CustomerIdError, extractCustomerId, hashCustomerId } from "@/lib/customerId";
@@ -19,16 +19,17 @@ const SnapshotBody = z.object({
     .default([]),
 });
 
-function handleSnapshot(body: unknown) {
+async function handleSnapshot(body: unknown) {
   const parsed = SnapshotBody.parse(body);
+  const baseline = await getDataSource().getBaseline();
   const appliedIds = new Set(parsed.events.map((e) => e.id));
   const appliedEvents = eventsCatalog.filter((e) => appliedIds.has(e.id));
-  const scenario = applyEvents(baselineForecast, appliedEvents);
+  const scenario = applyEvents(baseline, appliedEvents);
   const threeStatement = runThreeStatement(scenario);
   return {
     scenarioId: parsed.scenarioId,
     customerIdHash: hashCustomerId(parsed.customerId),
-    baseline: baselineForecast,
+    baseline,
     scenario,
     threeStatement,
     eventCount: appliedEvents.length,
@@ -83,7 +84,7 @@ export async function POST(
       case "snapshot":
       case "run_three_statement":
       case "apply_event":
-        return NextResponse.json(handleSnapshot(body));
+        return NextResponse.json(await handleSnapshot(body));
       default:
         return NextResponse.json(
           { error: `unknown tool: ${toolName}` },

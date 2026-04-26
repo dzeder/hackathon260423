@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { baselineForecast } from "@/data/baseline";
+import { getDataSource } from "@/data";
+import type { ForecastMonth } from "@/data/baseline";
 import { applyEvents } from "@/lib/applyEvents";
 import { respond } from "@/lib/copilot";
 import { eventsCatalog } from "@/lib/eventsCatalog";
@@ -111,7 +112,7 @@ export async function POST(req: Request) {
   }
 
   const scope = scopeFromRequest(parsed.userId);
-  const scenarioContext = buildScenarioContext(parsed);
+  const scenarioContext = await buildScenarioContext(parsed);
   const persistenceOn = isPersistenceAvailable();
 
   // Conversation resolution up front so all code paths share one id.
@@ -162,7 +163,7 @@ export async function POST(req: Request) {
 
   // No API key -> canned path. Persists when the SF memory store is wired.
   if (!process.env.ANTHROPIC_API_KEY) {
-    const canned = respondCanned(parsed);
+    const canned = await respondCanned(parsed);
     if (persistenceOn) {
       try {
         await appendTurn(conversationId, scope, [
@@ -283,7 +284,7 @@ export async function POST(req: Request) {
       conversationId,
       error: err instanceof Error ? err.message : "unknown",
     });
-    const canned = respondCanned(parsed);
+    const canned = await respondCanned(parsed);
     recordLatency(METRICS.COPILOT_LATENCY, Math.round(performance.now() - startMs), [
       "source:canned",
       "fallback:1",
@@ -298,14 +299,15 @@ export async function POST(req: Request) {
   }
 }
 
-function buildScenarioContext(body: z.infer<typeof Body>): string {
+async function buildScenarioContext(body: z.infer<typeof Body>): Promise<string> {
   const appliedEvents = eventsCatalog.filter((e) =>
     body.appliedEventIds.includes(e.id),
   );
-  const scenario = applyEvents(baselineForecast, appliedEvents);
+  const baseline = await getDataSource().getBaseline();
+  const scenario = applyEvents(baseline, appliedEvents);
   const threeStatement = runThreeStatement(scenario);
 
-  const bTot = totals(baselineForecast);
+  const bTot = totals(baseline);
   const sTot = totals(scenario);
   const dRev = bTot.revenue ? ((sTot.revenue - bTot.revenue) / bTot.revenue) * 100 : 0;
   const dEbitda = bTot.ebitda ? ((sTot.ebitda - bTot.ebitda) / bTot.ebitda) * 100 : 0;
@@ -331,7 +333,7 @@ function buildScenarioContext(body: z.infer<typeof Body>): string {
     .join("\n");
 }
 
-function totals(forecast: typeof baselineForecast) {
+function totals(forecast: ForecastMonth[]) {
   return forecast.reduce(
     (acc, m) => ({
       revenue: acc.revenue + m.revenue,
@@ -344,17 +346,18 @@ function totals(forecast: typeof baselineForecast) {
   );
 }
 
-function respondCanned(body: z.infer<typeof Body>) {
+async function respondCanned(body: z.infer<typeof Body>) {
   const appliedEvents = eventsCatalog.filter((e) =>
     body.appliedEventIds.includes(e.id),
   );
-  const scenario = applyEvents(baselineForecast, appliedEvents);
+  const baseline = await getDataSource().getBaseline();
+  const scenario = applyEvents(baseline, appliedEvents);
   const threeStatement = runThreeStatement(scenario);
   return respond({
     prompt: body.prompt,
     scenarioId: body.scenarioId,
     appliedEventIds: body.appliedEventIds,
-    baseline: baselineForecast,
+    baseline,
     scenario,
     threeStatement,
   });
