@@ -1,0 +1,24 @@
+{
+  "name": "[ohanafy-plan][${CUSTOMER_LABEL}] Copilot live-turn errors spiking",
+  "type": "log alert",
+  "query": "logs(\"service:ohanafy-plan-webapp @msg:copilot_live_turn_failed @customer_id_hash:${CUSTOMER_ID_HASH}\").index(\"*\").rollup(\"count\").last(\"15m\") > 5",
+  "message": "More than 5 copilot_live_turn_failed events in 15 minutes for ${CUSTOMER_LABEL}.\n\nThe canned fallback should be hiding most of these from end users, but persistent failures point at: Anthropic outage / quota, Apex REST callout failure (memory persistence), or a bug in the orchestrator that hits every turn.\n\nFirst step: open one log row, read the @error field, and check whether @source is 'canned' downstream. If yes, customer is degraded but not down. If a 5xx is reaching the user, escalate.\n\nRunbook: docs/runbook.md §10–11.\n\n@oncall-${CUSTOMER_LABEL}",
+  "tags": [
+    "service:ohanafy-plan-webapp",
+    "customer_id_hash:${CUSTOMER_ID_HASH}",
+    "owner:ohanafy-plan",
+    "severity:high"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 5,
+      "warning": 2
+    },
+    "notify_no_data": false,
+    "renotify_interval": 60,
+    "evaluation_delay": 60,
+    "enable_logs_sample": true,
+    "groupby_simple_monitor": false
+  },
+  "priority": 2
+}

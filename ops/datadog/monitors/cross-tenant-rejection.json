@@ -1,0 +1,24 @@
+{
+  "name": "[ohanafy-plan][${CUSTOMER_LABEL}] Cross-tenant Apex bind rejection (P0 SECURITY)",
+  "type": "log alert",
+  "query": "logs(\"service:ohanafy-plan-webapp \\\"customerId does not match\\\" @customer_id_hash:${CUSTOMER_ID_HASH}\").index(\"*\").rollup(\"count\").last(\"5m\") >= 1",
+  "message": "**This monitor fires on the FIRST cross-tenant Apex 403 — it is intentionally hair-trigger.**\n\n${CUSTOMER_LABEL}'s Vercel deploy made a /plan/memory request whose customerId did not match the bound `Ohanafy_Copilot_Config__mdt.Default.Customer_Id__c` value in their Salesforce org. This is one of three things:\n\n1. **Misconfiguration** — the Vercel `SF_CUSTOMER_ID` env var was set to the wrong value or the SF mdt was set to the wrong value. Compare both. Most likely.\n2. **Stale onboarding** — `scripts/onboard-customer.sh` was not re-run after a recent change. Re-run it.\n3. **Compromise** — a third-party process is calling the Vercel deploy with a bad `x-customer-id` header. Check Datadog for the source IP and request pattern.\n\n**Do not silence this monitor.** If the cause is benign (1 or 2), fix the config. If 3, see docs/runbook.md §15 emergency procedure.\n\n@oncall-${CUSTOMER_LABEL} @ohanafy-plan-security",
+  "tags": [
+    "service:ohanafy-plan-webapp",
+    "customer_id_hash:${CUSTOMER_ID_HASH}",
+    "owner:ohanafy-plan",
+    "severity:critical",
+    "category:security"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 1
+    },
+    "notify_no_data": false,
+    "renotify_interval": 30,
+    "evaluation_delay": 60,
+    "enable_logs_sample": true,
+    "groupby_simple_monitor": false
+  },
+  "priority": 1
+}

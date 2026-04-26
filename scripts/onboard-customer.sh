@@ -104,6 +104,12 @@ fi
 # --- 4. Done ---------------------------------------------------------------
 echo
 echo "==> Verification complete."
-echo "    Next: run the Playwright happy-path against this URL:"
-echo "        cd packages/web-app && BASE_URL=${BASE_URL} npm run e2e"
-echo "    Then add a DECISION_LOG.md entry recording the onboarding."
+echo "    Next steps:"
+echo "      1. Playwright happy-path against this URL:"
+echo "           cd packages/web-app && BASE_URL=${BASE_URL} npm run e2e"
+echo "      2. Apply the Datadog dashboard + monitors for this customer:"
+echo "           DD_API_KEY=... DD_APP_KEY=... \\"
+echo "             CUSTOMER_ID=${CUSTOMER_ID} CUSTOMER_LABEL=\"<Display Name>\" \\"
+echo "             VERCEL_URL=${BASE_URL#https://} ops/datadog/apply.sh"
+echo "         (see ops/datadog/README.md for HEALTH_CHECK_ID + oncall wiring)"
+echo "      3. Append a DECISION_LOG.md entry recording the onboarding."

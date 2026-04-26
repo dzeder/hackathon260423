@@ -1,0 +1,24 @@
+{
+  "name": "[ohanafy-plan][${CUSTOMER_LABEL}] Copilot p99 latency over 30s",
+  "type": "metric alert",
+  "query": "max(last_15m):p99:ohanafy.plan.copilot.latency_ms{customer_id_hash:${CUSTOMER_ID_HASH},source:live} > 30000",
+  "message": "Copilot live-turn p99 latency for ${CUSTOMER_LABEL} is above 30s for 15 minutes.\n\nLikely causes (in order): Anthropic upstream (check status.anthropic.com), Salesforce callout slowness (look at @msg:soql_completed durations), Vercel cold starts (compare to deploy times). The cost-cap doesn't trip until ~$0.30/turn so a slow turn often means a runaway tool loop — pull the trace and inspect the @tool_count + @iterations fields.\n\nRunbook: docs/runbook.md §11. \n\n@oncall-${CUSTOMER_LABEL}",
+  "tags": [
+    "service:ohanafy-plan-webapp",
+    "customer_id_hash:${CUSTOMER_ID_HASH}",
+    "owner:ohanafy-plan",
+    "severity:high"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 30000,
+      "warning": 15000
+    },
+    "notify_no_data": false,
+    "renotify_interval": 60,
+    "evaluation_delay": 60,
+    "include_tags": true,
+    "require_full_window": false
+  },
+  "priority": 2
+}

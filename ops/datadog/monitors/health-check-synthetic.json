@@ -1,0 +1,22 @@
+{
+  "name": "[ohanafy-plan][${CUSTOMER_LABEL}] /api/health failing",
+  "type": "metric alert",
+  "query": "max(last_10m):avg:synthetics.http.response.times{check_id:${HEALTH_CHECK_ID}} > 0 || min(last_10m):avg:synthetics.http.status{check_id:${HEALTH_CHECK_ID}} < 200",
+  "message": "**This monitor pairs with the Datadog Synthetic HTTP check that polls https://${VERCEL_URL}/api/health every 5 minutes.** If the synthetic returns non-200 (or no response) for 10 minutes, the customer's copilot is effectively offline.\n\n`/api/health` checks Anthropic, the gateway shared-secret, and Salesforce connectivity. The body's `checks.{anthropic,gatewayAuth,salesforce}.ok` fields tell you which dependency is broken.\n\n**To set up the synthetic** (one-time per customer):\n1. Datadog UI -> UX Monitoring -> Synthetic Tests -> New Test -> API Test -> HTTP\n2. URL: https://${VERCEL_URL}/api/health, GET, 5min frequency, locations: 1 in customer's region.\n3. Assertions: status code = 200, body contains `\"status\":\"ok\"`.\n4. Capture the `check_id` and re-apply this monitor with `HEALTH_CHECK_ID=...` exported.\n\nUntil the synthetic exists, this monitor cannot fire — the apply script logs a clear note when HEALTH_CHECK_ID is unset.\n\n@oncall-${CUSTOMER_LABEL}",
+  "tags": [
+    "service:ohanafy-plan-webapp",
+    "customer_id_hash:${CUSTOMER_ID_HASH}",
+    "owner:ohanafy-plan",
+    "severity:critical"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 0
+    },
+    "notify_no_data": true,
+    "no_data_timeframe": 30,
+    "renotify_interval": 30,
+    "evaluation_delay": 60
+  },
+  "priority": 1
+}
