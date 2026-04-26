@@ -52,7 +52,8 @@ test.describe("demo happy path", () => {
     await expect(memo).toBeVisible({ timeout: 30_000 });
     const text = (await memo.textContent()) ?? "";
     const words = text.trim().split(/\s+/).filter(Boolean).length;
-    expect(words).toBeGreaterThanOrEqual(80);
+    // Canned path lands in the 120–180 stated band; live model output may run a touch wider.
+    expect(words).toBeGreaterThanOrEqual(110);
     expect(words).toBeLessThanOrEqual(220);
     expect(text.toLowerCase()).toContain("confidence:");
   });

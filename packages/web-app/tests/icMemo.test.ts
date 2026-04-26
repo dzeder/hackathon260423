@@ -57,8 +57,29 @@ describe("respondCannedIcMemo", () => {
       scenario,
       threeStatement,
     });
-    expect(out.memo).toMatch(/no events/i);
+    expect(out.memo).toMatch(/no events|no drivers/i);
     expect(out.wordCount).toBeGreaterThan(0);
+  });
+
+  it("lands in the 120–180 word band across the §15 event combinations", () => {
+    const cases: string[][] = [
+      [],
+      ["iron-bowl-2026"],
+      ["iron-bowl-2026", "heat-wave-july"],
+      ["iron-bowl-2026", "heat-wave-july", "gulf-hurricane-cat-3"],
+    ];
+    for (const ids of cases) {
+      const { baseline, scenario, threeStatement } = build(ids);
+      const out = respondCannedIcMemo({
+        scenarioId: "yellowhammer-6mo",
+        appliedEventIds: ids,
+        baseline,
+        scenario,
+        threeStatement,
+      });
+      expect(out.wordCount).toBeGreaterThanOrEqual(120);
+      expect(out.wordCount).toBeLessThanOrEqual(180);
+    }
   });
 
   it("contains no emojis", () => {
