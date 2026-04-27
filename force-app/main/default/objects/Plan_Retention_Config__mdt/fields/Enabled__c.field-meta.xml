@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Enabled__c</fullName>
+    <defaultValue>true</defaultValue>
+    <description>Master switch for OhfyPlanRetentionJob. When false the scheduled job exits without scanning, so a customer under legal hold can pause retention without unscheduling the cron.</description>
+    <externalId>false</externalId>
+    <fieldManageability>SubscriberControlled</fieldManageability>
+    <label>Enabled</label>
+    <type>Checkbox</type>
+</CustomField>
