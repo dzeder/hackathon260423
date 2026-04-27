@@ -1,27 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { eventsCatalog, findEvent } from "@/lib/eventsCatalog";
+import { findEvent, seedEventCatalog } from "@/lib/eventsCatalog";
 
-describe("eventsCatalog", () => {
+describe("seedEventCatalog", () => {
   it("contains at least the six demo-path events", () => {
-    expect(eventsCatalog.length).toBeGreaterThanOrEqual(6);
+    expect(seedEventCatalog.length).toBeGreaterThanOrEqual(6);
   });
 
   it("every event has a month in 2026 YYYY-MM format", () => {
-    for (const event of eventsCatalog) {
+    for (const event of seedEventCatalog) {
       expect(event.month).toMatch(/^2026-(0[1-9]|1[0-2])$/);
     }
   });
 
   it("findEvent returns a template for a known id", () => {
-    expect(findEvent("iron-bowl-2026")?.label).toMatch(/Iron Bowl/);
+    expect(findEvent(seedEventCatalog, "iron-bowl-2026")?.label).toMatch(/Iron Bowl/);
   });
 
   it("findEvent returns undefined for unknown ids", () => {
-    expect(findEvent("does-not-exist")).toBeUndefined();
+    expect(findEvent(seedEventCatalog, "does-not-exist")).toBeUndefined();
   });
 
   it("every event has at least one material delta", () => {
-    for (const event of eventsCatalog) {
+    for (const event of seedEventCatalog) {
       const hasDelta =
         (event.revenueDeltaPct ?? 0) !== 0 ||
         (event.cogsDeltaPct ?? 0) !== 0 ||

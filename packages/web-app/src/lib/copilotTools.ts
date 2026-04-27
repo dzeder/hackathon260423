@@ -2,7 +2,11 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { baselineForecast } from "@/data/baseline";
 import { applyEvents, type ScenarioEvent } from "@/lib/applyEvents";
-import { eventsCatalog, findEvent, type EventTemplate } from "@/lib/eventsCatalog";
+import {
+  findEvent,
+  getEventsCatalog,
+  type EventTemplate,
+} from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
 import {
   isSalesforceConfigured,
@@ -92,8 +96,9 @@ const QuerySalesforceInput = z.object({
 
 async function snapshotTool(raw: unknown) {
   const { eventIds } = SnapshotInput.parse(raw);
+  const catalog = await getEventsCatalog();
   const events = eventIds
-    .map(findEvent)
+    .map((id) => findEvent(catalog, id))
     .filter((e): e is EventTemplate => Boolean(e));
   const forecast = applyEvents(baselineForecast, events);
   const threeStatement = runThreeStatement(forecast);
@@ -102,7 +107,7 @@ async function snapshotTool(raw: unknown) {
     scenario: summarizeForecast(forecast),
     threeStatement,
     appliedEventIds: events.map((e) => e.id),
-    missingEventIds: eventIds.filter((id) => !findEvent(id)),
+    missingEventIds: eventIds.filter((id) => !findEvent(catalog, id)),
   };
 }
 
@@ -118,8 +123,9 @@ async function applyEventHandler(raw: unknown) {
 
 async function runThreeStatementHandler(raw: unknown) {
   const { eventIds } = RunThreeStatementInput.parse(raw);
+  const catalog = await getEventsCatalog();
   const events = eventIds
-    .map(findEvent)
+    .map((id) => findEvent(catalog, id))
     .filter((e): e is EventTemplate => Boolean(e));
   const forecast = applyEvents(baselineForecast, events);
   return runThreeStatement(forecast);
@@ -127,8 +133,9 @@ async function runThreeStatementHandler(raw: unknown) {
 
 async function searchEventsHandler(raw: unknown) {
   const { query, category, month } = SearchEventsInput.parse(raw);
+  const catalog = await getEventsCatalog();
   const q = query?.toLowerCase();
-  const matches = eventsCatalog.filter((e) => {
+  const matches = catalog.filter((e) => {
     if (category && e.category !== category) return false;
     if (month && e.month !== month) return false;
     if (q) {
@@ -146,17 +153,19 @@ async function searchEventsHandler(raw: unknown) {
 
 async function getEventHandler(raw: unknown) {
   const { id } = GetEventInput.parse(raw);
-  const event = findEvent(id);
+  const catalog = await getEventsCatalog();
+  const event = findEvent(catalog, id);
   if (!event) {
-    return { error: `Event not found: ${id}`, availableIds: eventsCatalog.map((e) => e.id) };
+    return { error: `Event not found: ${id}`, availableIds: catalog.map((e) => e.id) };
   }
   return { event };
 }
 
 async function suggestEventsHandler(raw: unknown) {
   const { context, limit } = SuggestEventsInput.parse(raw);
+  const catalog = await getEventsCatalog();
   const tokens = context.toLowerCase().split(/\W+/).filter((t) => t.length >= 3);
-  const scored = eventsCatalog
+  const scored = catalog
     .map((e) => {
       const hay = `${e.label} ${e.notes ?? ""} ${e.source ?? ""} ${e.category}`.toLowerCase();
       const score = tokens.reduce((acc, t) => (hay.includes(t) ? acc + 1 : acc), 0);

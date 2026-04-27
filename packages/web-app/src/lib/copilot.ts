@@ -1,5 +1,5 @@
 import type { ForecastMonth } from "@/data/baseline";
-import { findEvent } from "@/lib/eventsCatalog";
+import { findEvent, type EventTemplate } from "@/lib/eventsCatalog";
 import type { ThreeStatement } from "@/lib/threeStatement";
 
 export type CopilotQuery = {
@@ -9,6 +9,8 @@ export type CopilotQuery = {
   baseline: ForecastMonth[];
   scenario: ForecastMonth[];
   threeStatement: ThreeStatement;
+  /** Active event-template catalog (from getEventsCatalog() upstream). */
+  catalog: EventTemplate[];
 };
 
 export type CopilotResponse = {
@@ -46,10 +48,10 @@ export function respond(q: CopilotQuery): CopilotResponse {
   const s = totals(q.scenario);
   const dRev = b.revenue ? ((s.revenue - b.revenue) / b.revenue) * 100 : 0;
   const dEbitda = b.ebitda ? ((s.ebitda - b.ebitda) / b.ebitda) * 100 : 0;
-  const events = q.appliedEventIds.map((id) => findEvent(id)).filter(Boolean);
+  const events = q.appliedEventIds.map((id) => findEvent(q.catalog, id)).filter(Boolean);
 
   if (lower.includes("iron bowl") || lower.includes("football") || lower.includes("cfp")) {
-    const e = findEvent("iron-bowl-2026");
+    const e = findEvent(q.catalog, "iron-bowl-2026");
     return {
       text: `Iron Bowl weekend is a consistent October driver for on-premise and chain programs. Historically we model +${e?.revenueDeltaPct}% revenue with +${e?.cogsDeltaPct}% COGS and a small opex bump for additional routing.`,
       bullets: [
@@ -88,7 +90,7 @@ export function respond(q: CopilotQuery): CopilotResponse {
   }
 
   if (lower.includes("risk") || lower.includes("downside") || lower.includes("hurricane")) {
-    const e = findEvent("gulf-hurricane-cat-3");
+    const e = findEvent(q.catalog, "gulf-hurricane-cat-3");
     return {
       text: `The Mobile hurricane scenario is the largest modeled downside: ${fmtPct(e?.revenueDeltaPct ?? 0)} revenue with opex up ${fmtUsdK(e?.opexDeltaAbs ?? 0)} due to emergency routing and DC downtime.`,
       bullets: [

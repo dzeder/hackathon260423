@@ -1,5 +1,6 @@
 import type { DataSource } from "./dataSource";
 import type { ForecastMonth } from "./baseline";
+import { seedEventCatalog, type EventTemplate } from "@/lib/eventsCatalog";
 
 /**
  * Test-only data source. Used by Vitest and as a graceful fallback when SF_AUTH_URL
@@ -17,5 +18,9 @@ export class FixtureDataSource implements DataSource {
       { month: "2026-09", revenue: 5_050, cogs: 3_310, opex: 935, gm: 1_740, ebitda: 805 },
       { month: "2026-10", revenue: 4_780, cogs: 3_130, opex: 920, gm: 1_650, ebitda: 730 },
     ];
+  }
+
+  async getEventTemplates(): Promise<EventTemplate[]> {
+    return seedEventCatalog;
   }
 }

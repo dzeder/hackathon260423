@@ -103,7 +103,9 @@ Paste the output in BOTH places:
 | `COPILOT_MAX_COST_USD_PER_DAY` | optional | Prod | Daily $ cap (default 25) |
 | `COPILOT_MAX_COST_USD_PER_TURN` | optional | Prod | Per-turn $ cap (default 0.30) |
 
-**Without the SF vars**: copilot serves stateless live Claude responses. No memory, no rate-limit, no usage counter, `query_salesforce` returns canned. Health check reports `salesforce: ok=false`.
+**Without the SF vars**: copilot serves stateless live Claude responses. No memory, no rate-limit, no usage counter, `query_salesforce` returns canned. Health check reports `salesforce: ok=false`. Event templates are also served from `lib/eventsCatalog.ts:seedEventCatalog` (the same six-event demo seed) instead of `Plan_Event_Template__c` — useful for local dev without an org, but customers should always run with SF configured so their own event rows surface in the dashboard, IC memo, and copilot tool calls.
+
+**Editing customer events**: customer admins edit `Plan_Event_Template__c` rows in their Salesforce org. Changes show up in the web app within the 5-minute in-process cache TTL (and immediately on a fresh function cold start). Same data path is used by the `ohanafy-events` MCP server and the LWC scenario engine, so all three surfaces stay consistent.
 
 ### 5. Deploy
 

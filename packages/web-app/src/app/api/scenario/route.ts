@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDataSource } from "@/data";
 import { applyEvents } from "@/lib/applyEvents";
-import { eventsCatalog } from "@/lib/eventsCatalog";
+import { getEventsCatalog } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
 
 export const runtime = "nodejs";
@@ -22,7 +22,8 @@ export async function POST(req: Request) {
     );
   }
   const baseline = await getDataSource().getBaseline();
-  const appliedEvents = eventsCatalog.filter((e) =>
+  const catalog = await getEventsCatalog();
+  const appliedEvents = catalog.filter((e) =>
     parsed.appliedEventIds.includes(e.id),
   );
   const scenario = applyEvents(baseline, appliedEvents);
@@ -36,9 +37,12 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
-  const baseline = await getDataSource().getBaseline();
+  const [baseline, catalog] = await Promise.all([
+    getDataSource().getBaseline(),
+    getEventsCatalog(),
+  ]);
   return NextResponse.json({
     baseline,
-    catalog: eventsCatalog,
+    catalog,
   });
 }

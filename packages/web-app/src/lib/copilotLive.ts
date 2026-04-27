@@ -59,7 +59,7 @@ function buildContext(q: CopilotQuery): string {
     const dRev = b.revenue ? ((s.revenue - b.revenue) / b.revenue) * 100 : 0;
     const dEbitda = b.ebitda ? ((s.ebitda - b.ebitda) / b.ebitda) * 100 : 0;
     const events = q.appliedEventIds
-        .map((id) => findEvent(id))
+        .map((id) => findEvent(q.catalog, id))
         .filter((e): e is NonNullable<ReturnType<typeof findEvent>> => Boolean(e))
         .map(
             (e) =>
