@@ -1,0 +1,401 @@
+{
+  "title": "Ohanafy Plan — Copilot Overview (${CUSTOMER_LABEL})",
+  "description": "Per-customer health dashboard for the Ohanafy Plan copilot stack. Filters all widgets to customer_id_hash=${CUSTOMER_ID_HASH}. Apply with ops/datadog/apply.sh; do not edit by hand. Re-apply on every change to ops/datadog/dashboards/copilot-overview.json so drift stays in git.",
+  "layout_type": "ordered",
+  "reflow_type": "fixed",
+  "template_variables": [
+    {
+      "name": "env",
+      "prefix": "env",
+      "available_values": [],
+      "default": "production"
+    }
+  ],
+  "widgets": [
+    {
+      "definition": {
+        "type": "group",
+        "layout_type": "ordered",
+        "title": "Headlines (last 24h, this customer)",
+        "widgets": [
+          {
+            "definition": {
+              "type": "query_value",
+              "title": "Turns today",
+              "title_size": "13",
+              "title_align": "left",
+              "precision": 0,
+              "requests": [
+                {
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "turns",
+                      "data_source": "logs",
+                      "search": {
+                        "query": "service:ohanafy-plan-webapp @copilot_event:turn_complete @customer_id_hash:${CUSTOMER_ID_HASH} $env"
+                      },
+                      "indexes": ["*"],
+                      "compute": { "aggregation": "count" },
+                      "group_by": []
+                    }
+                  ],
+                  "formulas": [{ "formula": "turns" }]
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "query_value",
+              "title": "Spend today (USD)",
+              "title_size": "13",
+              "title_align": "left",
+              "precision": 2,
+              "requests": [
+                {
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "spend",
+                      "data_source": "logs",
+                      "search": {
+                        "query": "service:ohanafy-plan-webapp @copilot_event:turn_complete @customer_id_hash:${CUSTOMER_ID_HASH} $env"
+                      },
+                      "indexes": ["*"],
+                      "compute": { "aggregation": "sum", "metric": "@cost_usd" },
+                      "group_by": []
+                    }
+                  ],
+                  "formulas": [{ "formula": "spend" }]
+                }
+              ],
+              "conditional_formats": [
+                { "comparator": ">=", "value": 25, "palette": "white_on_red" },
+                { "comparator": ">=", "value": 15, "palette": "white_on_yellow" },
+                { "comparator": ">=", "value": 0, "palette": "white_on_green" }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "query_value",
+              "title": "P50 latency (last 1h)",
+              "title_size": "13",
+              "title_align": "left",
+              "precision": 0,
+              "custom_unit": "ms",
+              "requests": [
+                {
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "p50",
+                      "data_source": "metrics",
+                      "query": "p50:ohanafy.plan.copilot.latency_ms{customer_id_hash:${CUSTOMER_ID_HASH},$env}",
+                      "aggregator": "last"
+                    }
+                  ],
+                  "formulas": [{ "formula": "p50" }]
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "query_value",
+              "title": "P99 latency (last 1h)",
+              "title_size": "13",
+              "title_align": "left",
+              "precision": 0,
+              "custom_unit": "ms",
+              "requests": [
+                {
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "p99",
+                      "data_source": "metrics",
+                      "query": "p99:ohanafy.plan.copilot.latency_ms{customer_id_hash:${CUSTOMER_ID_HASH},$env}",
+                      "aggregator": "last"
+                    }
+                  ],
+                  "formulas": [{ "formula": "p99" }]
+                }
+              ],
+              "conditional_formats": [
+                { "comparator": ">=", "value": 30000, "palette": "white_on_red" },
+                { "comparator": ">=", "value": 10000, "palette": "white_on_yellow" },
+                { "comparator": ">=", "value": 0, "palette": "white_on_green" }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "group",
+        "layout_type": "ordered",
+        "title": "Latency",
+        "widgets": [
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Copilot latency by source (p50/p99)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "display_type": "line",
+                  "queries": [
+                    {
+                      "name": "p99",
+                      "data_source": "metrics",
+                      "query": "p99:ohanafy.plan.copilot.latency_ms{customer_id_hash:${CUSTOMER_ID_HASH},$env} by {source}"
+                    }
+                  ],
+                  "formulas": [{ "formula": "p99", "alias": "p99 {{source}}" }]
+                },
+                {
+                  "display_type": "line",
+                  "queries": [
+                    {
+                      "name": "p50",
+                      "data_source": "metrics",
+                      "query": "p50:ohanafy.plan.copilot.latency_ms{customer_id_hash:${CUSTOMER_ID_HASH},$env} by {source}"
+                    }
+                  ],
+                  "formulas": [{ "formula": "p50", "alias": "p50 {{source}}", "style": { "palette": "cool" } }]
+                }
+              ],
+              "yaxis": { "scale": "linear", "min": "0", "include_zero": true, "label": "ms" }
+            }
+          },
+          {
+            "definition": {
+              "type": "toplist",
+              "title": "MCP tool p99 latency by tool.name (last 1h)",
+              "requests": [
+                {
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "tool_p99",
+                      "data_source": "spans",
+                      "search": {
+                        "query": "service:ohanafy-plan-mcp-* customer_id_hash:${CUSTOMER_ID_HASH} $env"
+                      },
+                      "indexes": ["*"],
+                      "compute": { "aggregation": "pc99", "metric": "@duration" },
+                      "group_by": [{ "facet": "@tool.name", "limit": 10, "sort": { "aggregation": "pc99", "order": "desc", "metric": "@duration" } }]
+                    }
+                  ],
+                  "formulas": [{ "formula": "tool_p99 / 1000000", "alias": "p99 ms" }]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "group",
+        "layout_type": "ordered",
+        "title": "Errors, guardrails, isolation",
+        "widgets": [
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Copilot turn failures (live path errored)",
+              "show_legend": false,
+              "requests": [
+                {
+                  "display_type": "bars",
+                  "queries": [
+                    {
+                      "name": "errors",
+                      "data_source": "logs",
+                      "search": {
+                        "query": "service:ohanafy-plan-webapp @msg:copilot_live_turn_failed @customer_id_hash:${CUSTOMER_ID_HASH} $env"
+                      },
+                      "indexes": ["*"],
+                      "compute": { "aggregation": "count" },
+                      "group_by": []
+                    }
+                  ],
+                  "formulas": [{ "formula": "errors", "alias": "errors" }]
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Cost-cap hits (per-turn cap tripped)",
+              "show_legend": false,
+              "requests": [
+                {
+                  "display_type": "bars",
+                  "queries": [
+                    {
+                      "name": "cost_cap",
+                      "data_source": "logs",
+                      "search": {
+                        "query": "service:ohanafy-plan-webapp @copilot_event:turn_complete @cost_cap_hit:true @customer_id_hash:${CUSTOMER_ID_HASH} $env"
+                      },
+                      "indexes": ["*"],
+                      "compute": { "aggregation": "count" },
+                      "group_by": []
+                    }
+                  ],
+                  "formulas": [{ "formula": "cost_cap", "alias": "cost_cap_hits" }]
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "query_value",
+              "title": "Cross-tenant rejections (Apex bind 403)",
+              "title_size": "13",
+              "title_align": "left",
+              "precision": 0,
+              "requests": [
+                {
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "rejects",
+                      "data_source": "logs",
+                      "search": {
+                        "query": "service:ohanafy-plan-webapp \"customerId does not match\" @customer_id_hash:${CUSTOMER_ID_HASH} $env"
+                      },
+                      "indexes": ["*"],
+                      "compute": { "aggregation": "count" },
+                      "group_by": []
+                    }
+                  ],
+                  "formulas": [{ "formula": "rejects" }]
+                }
+              ],
+              "conditional_formats": [
+                { "comparator": ">=", "value": 1, "palette": "white_on_red" },
+                { "comparator": ">=", "value": 0, "palette": "white_on_green" }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "group",
+        "layout_type": "ordered",
+        "title": "Cost & cache",
+        "widgets": [
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Token consumption (input vs cache_read vs output)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "display_type": "area",
+                  "queries": [
+                    {
+                      "name": "input",
+                      "data_source": "logs",
+                      "search": {
+                        "query": "service:ohanafy-plan-webapp @copilot_event:turn_complete @customer_id_hash:${CUSTOMER_ID_HASH} $env"
+                      },
+                      "indexes": ["*"],
+                      "compute": { "aggregation": "sum", "metric": "@input_tokens" },
+                      "group_by": []
+                    }
+                  ],
+                  "formulas": [{ "formula": "input", "alias": "input_tokens" }]
+                },
+                {
+                  "display_type": "area",
+                  "queries": [
+                    {
+                      "name": "cache",
+                      "data_source": "logs",
+                      "search": {
+                        "query": "service:ohanafy-plan-webapp @copilot_event:turn_complete @customer_id_hash:${CUSTOMER_ID_HASH} $env"
+                      },
+                      "indexes": ["*"],
+                      "compute": { "aggregation": "sum", "metric": "@cache_read_tokens" },
+                      "group_by": []
+                    }
+                  ],
+                  "formulas": [{ "formula": "cache", "alias": "cache_read_tokens" }]
+                },
+                {
+                  "display_type": "area",
+                  "queries": [
+                    {
+                      "name": "output",
+                      "data_source": "logs",
+                      "search": {
+                        "query": "service:ohanafy-plan-webapp @copilot_event:turn_complete @customer_id_hash:${CUSTOMER_ID_HASH} $env"
+                      },
+                      "indexes": ["*"],
+                      "compute": { "aggregation": "sum", "metric": "@output_tokens" },
+                      "group_by": []
+                    }
+                  ],
+                  "formulas": [{ "formula": "output", "alias": "output_tokens" }]
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "query_value",
+              "title": "Cache hit ratio (last 24h)",
+              "title_size": "13",
+              "title_align": "left",
+              "precision": 1,
+              "custom_unit": "%",
+              "requests": [
+                {
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "cache",
+                      "data_source": "logs",
+                      "search": {
+                        "query": "service:ohanafy-plan-webapp @copilot_event:turn_complete @customer_id_hash:${CUSTOMER_ID_HASH} $env"
+                      },
+                      "indexes": ["*"],
+                      "compute": { "aggregation": "sum", "metric": "@cache_read_tokens" },
+                      "group_by": []
+                    },
+                    {
+                      "name": "input",
+                      "data_source": "logs",
+                      "search": {
+                        "query": "service:ohanafy-plan-webapp @copilot_event:turn_complete @customer_id_hash:${CUSTOMER_ID_HASH} $env"
+                      },
+                      "indexes": ["*"],
+                      "compute": { "aggregation": "sum", "metric": "@input_tokens" },
+                      "group_by": []
+                    }
+                  ],
+                  "formulas": [{ "formula": "100 * cache / (cache + input)" }]
+                }
+              ],
+              "conditional_formats": [
+                { "comparator": ">=", "value": 60, "palette": "white_on_green" },
+                { "comparator": ">=", "value": 30, "palette": "white_on_yellow" },
+                { "comparator": ">=", "value": 0, "palette": "white_on_red" }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

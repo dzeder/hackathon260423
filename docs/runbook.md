@@ -264,7 +264,11 @@ Use `scripts/onboard-customer.sh <customer_id>` to walk through the steps; the s
    - [ ] Run the Playwright happy-path against the new URL: `cd packages/web-app && BASE_URL=<new-url> npm run e2e`.
    - [ ] In Datadog, confirm `service:ohanafy-plan-webapp customer_id_hash:<hash>` is receiving spans. The script prints the hash.
    - [ ] From customer-1's Vercel deploy, attempt a `/plan/memory` call with the new customer's id — must return 403 (the SF bind check rejects it).
-4. **Document**
+4. **Datadog templates** (per-customer dashboard + monitors)
+   - [ ] Run `DD_API_KEY=... DD_APP_KEY=... CUSTOMER_ID=<id> CUSTOMER_LABEL="<Display Name>" VERCEL_URL=<url> ops/datadog/apply.sh`. This creates one dashboard and four monitors (latency, errors, cost-cap, cross-tenant-rejection); see `ops/datadog/README.md` for what each watches and the threshold rationale.
+   - [ ] Create a Datadog Synthetic HTTP test against `https://<vercel-url>/api/health` (instructions in the message body of `monitors/health-check-synthetic.json`); copy its check id and re-run `apply.sh` with `HEALTH_CHECK_ID=<id>` to wire the fifth monitor.
+   - [ ] Replace `@oncall-<customer-label>` placeholders in the created monitors with the customer's actual notification target (email, PagerDuty service, Slack channel) — the apply script does not auto-resolve these.
+5. **Document**
    - [ ] Append an entry to `DECISION_LOG.md` recording the onboarding date, the customer id (hashed), the SF org alias, and the Vercel project name.
 
 ### Emergency: a customer's secret is compromised
@@ -278,7 +282,6 @@ Other customers are unaffected because each has their own Vercel project and SF 
 
 ## Future work (not blocking launch)
 
-- Datadog dashboard template (p50/p99 latency, cost/customer/day, cache hit ratio, SF callout latency)
 - Retention cron via SF Scheduled Apex: auto-delete conversations older than 90 days
 - Conversation export REST endpoint for GDPR-style data requests (returns the full Plan_Conversation__c + Plan_Message__c tree as JSON)
 - Multi-customer isolation: per-tenant Anthropic workspaces

@@ -1,0 +1,24 @@
+{
+  "name": "[ohanafy-plan][${CUSTOMER_LABEL}] Copilot per-turn cost-cap tripping repeatedly",
+  "type": "log alert",
+  "query": "logs(\"service:ohanafy-plan-webapp @copilot_event:turn_complete @cost_cap_hit:true @customer_id_hash:${CUSTOMER_ID_HASH}\").index(\"*\").rollup(\"count\").last(\"1h\") > 3",
+  "message": "The per-turn cost cap (COPILOT_MAX_COST_USD_PER_TURN, default $0.30) tripped 3+ times in the last hour for ${CUSTOMER_LABEL}.\n\nCommon causes: a runaway ReAct tool loop (look at @tool_count and @tool_names — if same tool fires 5 times, the model is stuck), an unusually long scenario context, or model misconfiguration (Opus override left on accidentally; check @model field).\n\nIf this fires repeatedly without a tool-loop signal, the per-turn cap is likely too tight for the customer's actual workload — bump COPILOT_MAX_COST_USD_PER_TURN by 50% in their Vercel project and re-deploy, then re-evaluate after a day.\n\n@oncall-${CUSTOMER_LABEL}",
+  "tags": [
+    "service:ohanafy-plan-webapp",
+    "customer_id_hash:${CUSTOMER_ID_HASH}",
+    "owner:ohanafy-plan",
+    "severity:medium"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 3,
+      "warning": 1
+    },
+    "notify_no_data": false,
+    "renotify_interval": 240,
+    "evaluation_delay": 60,
+    "enable_logs_sample": true,
+    "groupby_simple_monitor": false
+  },
+  "priority": 3
+}
