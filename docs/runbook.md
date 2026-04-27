@@ -234,6 +234,28 @@ Daily budget $25 (default) = ~750 Sonnet turns or ~150 Opus turns per customer p
 - **Anthropic rate limits**: Tier 2 is 50 RPM on Opus, higher on Sonnet. The cost-per-turn cap usually trips first.
 - **`Plan_Message__c.Content__c`**: 131K chars per row. Multi-tool turns serialize tool_use + tool_result blocks as JSON, typically 5-30K. Plenty of headroom.
 
+## Memory-object indexes
+
+| Field | Type | Index | Why |
+|---|---|---|---|
+| `Plan_Conversation__c.Customer_Id__c` | Text | `externalId=true` (non-unique) | Every memory query starts here |
+| `Plan_Conversation__c.User_Id__c` | Text | `externalId=true` (non-unique) | Pairs with Customer_Id__c on getOrCreateActive / listThreads |
+| `Plan_Conversation__c.Last_Activity_At__c` | DateTime | **needs SF Support case** | ORDER BY in getOrCreateActive / listThreads |
+| `Plan_Message__c.Conversation__c` | Master-Detail | auto-indexed | parent FK |
+| `Plan_Message__c.Customer_Id__c` | Text | `externalId=true` (non-unique) | defense-in-depth filter on loadHistory |
+| `Plan_Message__c.Sequence__c` | Number | `externalId=true` (non-unique) | ORDER BY ASC on loadHistory |
+| `Plan_Usage_Daily__c.Key__c` | Text | `externalId=true` + `unique=true` | upsert lookup |
+
+**The `Last_Activity_At__c` gap**: Salesforce only allows `externalId=true` on Text / Number / Email / Auto Number. DateTime fields cannot be indexed via metadata. For 5 customers with bounded `LIMIT cap` (25 threads, 100 messages) and per-tenant filtering already on `Customer_Id__c` first, the ORDER BY scan is small enough to live with.
+
+**File the SF support case** when *any one customer* crosses one of these thresholds:
+- `Plan_Conversation__c` row count > 5,000 for that org, or
+- p99 of getOrCreateActive / listThreads > 800ms in Datadog (`service:ohanafy-plan-webapp` filtered by `customer_id_hash`)
+
+The case to file: *"Please add a non-unique custom index on `Plan_Conversation__c.Last_Activity_At__c`. Used in ORDER BY clause of an Apex REST handler (`OhfyPlanMemoryStore`); current row count and p99 latency: <numbers>."* SF typically turns these around in 3-5 business days.
+
+To diagnose ahead of time: enable Apex Debug Log on the integration user, run a representative copilot turn, look for `SOQL_EXECUTE_BEGIN` followed by `Aggregations: 1` and a high `Rows: N` — that's the row-scan symptom. If the rows scanned is much larger than the rows returned, the ORDER BY is doing a full scan.
+
 ## §15 Multi-customer operations
 
 ### Deployment topology (decided)
