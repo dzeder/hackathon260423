@@ -256,6 +256,35 @@ The case to file: *"Please add a non-unique custom index on `Plan_Conversation__
 
 To diagnose ahead of time: enable Apex Debug Log on the integration user, run a representative copilot turn, look for `SOQL_EXECUTE_BEGIN` followed by `Aggregations: 1` and a high `Rows: N` — that's the row-scan symptom. If the rows scanned is much larger than the rows returned, the ORDER BY is doing a full scan.
 
+## Pre-bug-bash verification
+
+`scripts/verify-deploy.sh` is the one-command check that the sandbox + Vercel + Datadog match the merged-to-master code. Run before any internal bug bash.
+
+```bash
+BASE_URL=https://web-app-chi-puce.vercel.app \
+  SF_ORG_ALIAS=ohanafy-hack-sandbox \
+  CUSTOMER_ID=yellowhammer \
+  DD_API_KEY=... DD_APP_KEY=... \
+  scripts/verify-deploy.sh
+```
+
+Each section is independent — missing creds for one (Datadog, sf CLI, etc.) print a `WARN` and skip instead of failing the run. Exit codes:
+- **0** — all required checks passed (warnings OK)
+- **1** — at least one required check failed; fix the `FAIL` lines and re-run
+- **2** — script setup error (missing `curl` / `jq` / `git`)
+
+What it checks, in order: Vercel `/api/health` and deployed-SHA match → Salesforce custom objects deployed → `Ohanafy_Copilot_Config__mdt.Default.Customer_Id__c` populated (P0-#3 bind enforcement) → `Plan_Retention_Config__mdt.Default` present → retention `CronTrigger` registered → Datadog dashboard + monitors exist for this customer's hash → recent log traffic for that hash → end-to-end wrong-customer probe rejected.
+
+### Common sandbox gaps surfaced by the verifier
+
+| FAIL line | Action |
+|---|---|
+| `force-app/ has not been deployed` | The CI `apex-tests` job self-skips when the `SF_AUTH_URL` GitHub secret is missing. Check `Settings → Environments → hackathon-deploy` on the repo and add the secret, then push a no-op force-app commit to trigger CI. Fastest fix: deploy manually with `sf project deploy start --source-dir force-app --target-org ohanafy-hack-sandbox --test-level RunLocalTests`. |
+| `Customer_Id__c is blank` | In Setup → Custom Metadata Types → Ohanafy Copilot Config → Default, set `Customer_Id__c` to whatever Vercel's `SF_CUSTOMER_ID` is set to. P0-#3 bind enforcement is a no-op until this matches. |
+| `OhfyPlanRetentionJob is NOT scheduled` | One-time anonymous Apex: `System.schedule('Ohanafy Plan retention nightly', '0 0 3 * * ?', new OhfyPlanRetentionJob());`. See "Conversation retention" above. |
+| `no 'Ohanafy Plan — Copilot Overview' dashboard` | Run `ops/datadog/apply.sh` with `DD_API_KEY` / `DD_APP_KEY` / `CUSTOMER_ID` / `CUSTOMER_LABEL` exported. |
+| `Vercel is at <sha>, master is <other-sha>` | Run `vercel deploy --prod --yes` from `packages/web-app`. |
+
 ## §15 Multi-customer operations
 
 ### Deployment topology (decided)
