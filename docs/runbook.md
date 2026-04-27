@@ -279,6 +279,8 @@ Use `scripts/onboard-customer.sh <customer_id>` to walk through the steps; the s
    - [ ] Create the integration user, assign the permission set (§2)
    - [ ] Set `Ohanafy_Copilot_Config__mdt.Default.Customer_Id__c` to a stable string (e.g. their SF org id, an internal customer code). This is the canonical id; it must match the Vercel env.
    - [ ] Set `Ohanafy_Copilot_Config__mdt.Default.Client_Secret__c` to a freshly generated `openssl rand -hex 32`.
+   - [ ] Adjust `Plan_Retention_Config__mdt.Default.Days_To_Keep__c` if the customer needs something other than 90 days; otherwise the default applies.
+   - [ ] Schedule the nightly retention job once: anonymous Apex `System.schedule('Ohanafy Plan retention nightly', '0 0 3 * * ?', new OhfyPlanRetentionJob());` (full procedure in "Conversation retention" above).
 2. **Vercel side**
    - [ ] Create a new Vercel project (or new alias on a shared project) for this customer.
    - [ ] Set every required env var from the table above. `SF_CUSTOMER_ID` must equal what was put into `Customer_Id__c` on the SF side. `COPILOT_PERSONA` should reflect the customer's business (no Yellowhammer/Birmingham strings unless the customer is actually Yellowhammer Beverage). Set `NEXT_PUBLIC_CUSTOMER_NAME` and `NEXT_PUBLIC_CUSTOMER_HQ` so the dashboard heading reflects the customer — these are inlined at build time, so the Vercel build for that customer must have them set before deploy.
@@ -304,9 +306,34 @@ Use `scripts/onboard-customer.sh <customer_id>` to walk through the steps; the s
 
 Other customers are unaffected because each has their own Vercel project and SF org; there is no shared secret to rotate across the fleet.
 
+## Conversation retention
+
+`OhfyPlanRetentionJob` is a Schedulable + Batchable Apex class that nightly deletes `Plan_Conversation__c` rows whose `CreatedDate` AND `Last_Activity_At__c` are both older than the configured cutoff. `Plan_Message__c` rows cascade-delete via the master-detail relationship, so message data goes with its parent. `Plan_Usage_Daily__c` rollups are not touched (tiny per-day rows; admins can DROP older days manually if needed).
+
+**Configure** retention in `Plan_Retention_Config__mdt.Default`:
+- `Days_To_Keep__c` — number of days to retain. Default 90. Values < 1 are treated as 90 (defensive guard against a config typo wiping everything).
+- `Enabled__c` — master switch. Set to `false` for legal hold (the schedule keeps firing but the job exits without scanning).
+
+**Schedule** after first deploy. Run this anonymous Apex once per org (Setup → Developer Console → Debug → Open Execute Anonymous Window):
+
+```apex
+System.schedule(
+    'Ohanafy Plan retention nightly',
+    '0 0 3 * * ?',
+    new OhfyPlanRetentionJob()
+);
+```
+
+That cron fires at 03:00 UTC every night. To re-schedule on a different cadence, abort the existing CronTrigger first (`System.abortJob(jobId)`) — Salesforce rejects a duplicate name.
+
+**Verify** in Setup → Apex Jobs that the batch shows up after the next scheduled run. The class name is `OhfyPlanRetentionJob` and the status will be `Completed` with the row count in `Total Batches` × `Batch Size`.
+
+**Disable** without un-scheduling: flip `Plan_Retention_Config__mdt.Default.Enabled__c` to false. To remove permanently: `System.abortJob('<job-id>')` from anonymous Apex.
+
+**GDPR-style one-off delete**: if a single user requests deletion outside the retention window, run the SOQL DELETE in Operations § "Querying memory directly" — that's a separate, immediate path; the scheduled job is for steady-state cleanup.
+
 ## Future work (not blocking launch)
 
-- Retention cron via SF Scheduled Apex: auto-delete conversations older than 90 days
 - Conversation export REST endpoint for GDPR-style data requests (returns the full Plan_Conversation__c + Plan_Message__c tree as JSON)
 - Multi-customer isolation: per-tenant Anthropic workspaces
 - Long-context summarization: when a thread exceeds 30 messages, replace older turns with a Haiku-generated summary block

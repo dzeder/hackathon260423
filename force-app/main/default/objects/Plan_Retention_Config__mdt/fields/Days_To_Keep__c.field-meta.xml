@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Days_To_Keep__c</fullName>
+    <description>Number of days a Plan_Conversation__c row must be old before OhfyPlanRetentionJob deletes it. Cascade-delete on Plan_Message__c follows. Set to 90 by default; raise for compliance holds, lower for tighter privacy posture. Values < 1 are treated as 90 (defensive).</description>
+    <externalId>false</externalId>
+    <fieldManageability>SubscriberControlled</fieldManageability>
+    <label>Days To Keep</label>
+    <precision>4</precision>
+    <required>true</required>
+    <scale>0</scale>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>
