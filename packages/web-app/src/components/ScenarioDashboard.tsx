@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { ForecastMonth } from "@/data/baseline";
 import { customerProfile } from "@/data/baseline";
 import { applyEvents } from "@/lib/applyEvents";
-import { eventsCatalog } from "@/lib/eventsCatalog";
+import type { EventTemplate } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
 import { BaselineChart } from "./BaselineChart";
 import { CopilotPanel } from "./CopilotPanel";
@@ -32,12 +32,18 @@ function pctDelta(a: number, b: number): { label: string; positive: boolean } {
   return { label: `${sign}${d.toFixed(1)}%`, positive: d >= 0 };
 }
 
-export function ScenarioDashboard({ baseline }: { baseline: ForecastMonth[] }) {
+export function ScenarioDashboard({
+  baseline,
+  events,
+}: {
+  baseline: ForecastMonth[];
+  events: EventTemplate[];
+}) {
   const [appliedIds, setAppliedIds] = useState<string[]>([]);
 
   const appliedEvents = useMemo(
-    () => eventsCatalog.filter((e) => appliedIds.includes(e.id)),
-    [appliedIds],
+    () => events.filter((e) => appliedIds.includes(e.id)),
+    [events, appliedIds],
   );
 
   const scenarioMonths = useMemo(
@@ -71,7 +77,7 @@ export function ScenarioDashboard({ baseline }: { baseline: ForecastMonth[] }) {
     <div className="flex min-h-screen bg-slate-950 text-slate-100">
       <div className="hidden w-72 shrink-0 lg:block">
         <EventPicker
-          catalog={eventsCatalog}
+          catalog={events}
           appliedIds={appliedIds}
           onToggle={toggle}
           onReset={() => setAppliedIds([])}

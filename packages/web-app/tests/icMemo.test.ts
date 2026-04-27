@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { baselineForecast } from "@/data/baseline";
 import { applyEvents } from "@/lib/applyEvents";
-import { eventsCatalog } from "@/lib/eventsCatalog";
+import { seedEventCatalog } from "@/lib/eventsCatalog";
 import {
   buildIcMemoUserPrompt,
   countWords,
@@ -11,21 +11,22 @@ import { runThreeStatement } from "@/lib/threeStatement";
 
 function build(appliedIds: string[]) {
   const baseline = baselineForecast;
-  const applied = eventsCatalog.filter((e) => appliedIds.includes(e.id));
+  const applied = seedEventCatalog.filter((e) => appliedIds.includes(e.id));
   const scenario = applyEvents(baseline, applied);
   const threeStatement = runThreeStatement(scenario);
-  return { baseline, scenario, threeStatement };
+  return { baseline, scenario, threeStatement, catalog: seedEventCatalog };
 }
 
 describe("respondCannedIcMemo", () => {
   it("includes a headline with revenue $ and % when events are applied", () => {
-    const { baseline, scenario, threeStatement } = build(["iron-bowl-2026"]);
+    const { baseline, scenario, threeStatement, catalog } = build(["iron-bowl-2026"]);
     const out = respondCannedIcMemo({
       scenarioId: "yellowhammer-6mo",
       appliedEventIds: ["iron-bowl-2026"],
       baseline,
       scenario,
       threeStatement,
+      catalog,
     });
     expect(out.source).toBe("canned");
     expect(out.memo).toMatch(/revenue/i);
@@ -34,7 +35,7 @@ describe("respondCannedIcMemo", () => {
   });
 
   it("includes a confidence statement", () => {
-    const { baseline, scenario, threeStatement } = build([
+    const { baseline, scenario, threeStatement, catalog } = build([
       "iron-bowl-2026",
       "heat-wave-july",
     ]);
@@ -44,18 +45,20 @@ describe("respondCannedIcMemo", () => {
       baseline,
       scenario,
       threeStatement,
+      catalog,
     });
     expect(out.memo.toLowerCase()).toContain("confidence:");
   });
 
   it("handles the no-events case without throwing", () => {
-    const { baseline, scenario, threeStatement } = build([]);
+    const { baseline, scenario, threeStatement, catalog } = build([]);
     const out = respondCannedIcMemo({
       scenarioId: "yellowhammer-6mo",
       appliedEventIds: [],
       baseline,
       scenario,
       threeStatement,
+      catalog,
     });
     expect(out.memo).toMatch(/no events|no drivers/i);
     expect(out.wordCount).toBeGreaterThan(0);
@@ -69,13 +72,14 @@ describe("respondCannedIcMemo", () => {
       ["iron-bowl-2026", "heat-wave-july", "gulf-hurricane-cat-3"],
     ];
     for (const ids of cases) {
-      const { baseline, scenario, threeStatement } = build(ids);
+      const { baseline, scenario, threeStatement, catalog } = build(ids);
       const out = respondCannedIcMemo({
         scenarioId: "yellowhammer-6mo",
         appliedEventIds: ids,
         baseline,
         scenario,
         threeStatement,
+        catalog,
       });
       expect(out.wordCount).toBeGreaterThanOrEqual(120);
       expect(out.wordCount).toBeLessThanOrEqual(180);
@@ -83,13 +87,14 @@ describe("respondCannedIcMemo", () => {
   });
 
   it("contains no emojis", () => {
-    const { baseline, scenario, threeStatement } = build(["iron-bowl-2026"]);
+    const { baseline, scenario, threeStatement, catalog } = build(["iron-bowl-2026"]);
     const out = respondCannedIcMemo({
       scenarioId: "yellowhammer-6mo",
       appliedEventIds: ["iron-bowl-2026"],
       baseline,
       scenario,
       threeStatement,
+      catalog,
     });
     expect(out.memo).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
   });
@@ -97,13 +102,14 @@ describe("respondCannedIcMemo", () => {
 
 describe("buildIcMemoUserPrompt", () => {
   it("inlines baseline + scenario totals and event detail", () => {
-    const { baseline, scenario, threeStatement } = build(["iron-bowl-2026"]);
+    const { baseline, scenario, threeStatement, catalog } = build(["iron-bowl-2026"]);
     const prompt = buildIcMemoUserPrompt({
       scenarioId: "yellowhammer-6mo",
       appliedEventIds: ["iron-bowl-2026"],
       baseline,
       scenario,
       threeStatement,
+      catalog,
     });
     expect(prompt).toContain("yellowhammer-6mo");
     expect(prompt).toContain("Baseline 6-month totals");

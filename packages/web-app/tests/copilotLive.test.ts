@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AnthropicKeyMissingError, respondLive } from "@/lib/copilotLive";
 import { baselineForecast } from "@/data/baseline";
+import { seedEventCatalog } from "@/lib/eventsCatalog";
 
 const sampleQuery = {
   prompt: "what if a hurricane hits?",
@@ -13,6 +14,7 @@ const sampleQuery = {
     balance: { assets: 0, liabilities: 0, equity: 0 },
     cash: { operating: 0, investing: 0, financing: 0, net: 0 },
   } as never,
+  catalog: seedEventCatalog,
 };
 
 describe("respondLive key assertion", () => {

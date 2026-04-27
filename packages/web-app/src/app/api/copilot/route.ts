@@ -4,7 +4,7 @@ import { getDataSource } from "@/data";
 import type { ForecastMonth } from "@/data/baseline";
 import { applyEvents } from "@/lib/applyEvents";
 import { respond } from "@/lib/copilot";
-import { eventsCatalog } from "@/lib/eventsCatalog";
+import { getEventsCatalog } from "@/lib/eventsCatalog";
 import { log } from "@/lib/log";
 import { METRICS, recordLatency } from "@/lib/metrics";
 import { runThreeStatement } from "@/lib/threeStatement";
@@ -337,7 +337,8 @@ export async function POST(req: Request) {
 }
 
 async function buildScenarioContext(body: z.infer<typeof Body>): Promise<string> {
-  const appliedEvents = eventsCatalog.filter((e) =>
+  const catalog = await getEventsCatalog();
+  const appliedEvents = catalog.filter((e) =>
     body.appliedEventIds.includes(e.id),
   );
   const baseline = await getDataSource().getBaseline();
@@ -384,7 +385,8 @@ function totals(forecast: ForecastMonth[]) {
 }
 
 async function respondCanned(body: z.infer<typeof Body>) {
-  const appliedEvents = eventsCatalog.filter((e) =>
+  const catalog = await getEventsCatalog();
+  const appliedEvents = catalog.filter((e) =>
     body.appliedEventIds.includes(e.id),
   );
   const baseline = await getDataSource().getBaseline();
@@ -397,6 +399,7 @@ async function respondCanned(body: z.infer<typeof Body>) {
     baseline,
     scenario,
     threeStatement,
+    catalog,
   });
 }
 

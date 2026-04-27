@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { baselineForecast } from "@/data/baseline";
 import { applyEvents } from "@/lib/applyEvents";
 import { respond } from "@/lib/copilot";
-import { eventsCatalog } from "@/lib/eventsCatalog";
+import { seedEventCatalog } from "@/lib/eventsCatalog";
 import { runThreeStatement } from "@/lib/threeStatement";
 
 function buildQuery(prompt: string, appliedEventIds: string[] = []) {
-  const events = eventsCatalog.filter((e) => appliedEventIds.includes(e.id));
+  const events = seedEventCatalog.filter((e) => appliedEventIds.includes(e.id));
   const scenario = applyEvents(baselineForecast, events);
   const threeStatement = runThreeStatement(scenario);
   return {
@@ -16,6 +16,7 @@ function buildQuery(prompt: string, appliedEventIds: string[] = []) {
     baseline: baselineForecast,
     scenario,
     threeStatement,
+    catalog: seedEventCatalog,
   };
 }
 

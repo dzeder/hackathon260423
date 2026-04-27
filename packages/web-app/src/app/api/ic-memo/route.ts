@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getDataSource } from "@/data";
 import { applyEvents } from "@/lib/applyEvents";
 import { checkAuth } from "@/lib/copilotAuth";
-import { eventsCatalog } from "@/lib/eventsCatalog";
+import { getEventsCatalog } from "@/lib/eventsCatalog";
 import { generateIcMemo } from "@/lib/icMemo";
 import { log } from "@/lib/log";
 import { runThreeStatement } from "@/lib/threeStatement";
@@ -31,7 +31,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const appliedEvents = eventsCatalog.filter((e) =>
+  const catalog = await getEventsCatalog();
+  const appliedEvents = catalog.filter((e) =>
     parsed.appliedEventIds.includes(e.id),
   );
   const baseline = await getDataSource().getBaseline();
@@ -45,6 +46,7 @@ export async function POST(req: Request) {
       baseline,
       scenario,
       threeStatement,
+      catalog,
     });
     return NextResponse.json(result);
   } catch (err) {

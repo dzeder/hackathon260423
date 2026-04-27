@@ -4,7 +4,7 @@ import { getDataSource } from "@/data";
 import { getRateLimit, isToolEnabled } from "@/lib/agentConfig";
 import { applyEvents } from "@/lib/applyEvents";
 import { CustomerIdError, extractCustomerId, hashCustomerId } from "@/lib/customerId";
-import { eventsCatalog } from "@/lib/eventsCatalog";
+import { getEventsCatalog } from "@/lib/eventsCatalog";
 import { METRICS, incrementCounter } from "@/lib/metrics";
 import { consume } from "@/lib/rateLimit";
 import { runThreeStatement } from "@/lib/threeStatement";
@@ -21,9 +21,12 @@ const SnapshotBody = z.object({
 
 async function handleSnapshot(body: unknown) {
   const parsed = SnapshotBody.parse(body);
-  const baseline = await getDataSource().getBaseline();
+  const [baseline, catalog] = await Promise.all([
+    getDataSource().getBaseline(),
+    getEventsCatalog(),
+  ]);
   const appliedIds = new Set(parsed.events.map((e) => e.id));
-  const appliedEvents = eventsCatalog.filter((e) => appliedIds.has(e.id));
+  const appliedEvents = catalog.filter((e) => appliedIds.has(e.id));
   const scenario = applyEvents(baseline, appliedEvents);
   const threeStatement = runThreeStatement(scenario);
   return {

@@ -1,3 +1,4 @@
+import { getDataSource } from "@/data";
 import type { ScenarioEvent } from "@/lib/applyEvents";
 
 export type EventCategory = "sports" | "weather" | "holiday" | "macro" | "supplier";
@@ -10,10 +11,17 @@ export type EventTemplate = ScenarioEvent & {
   notes?: string;
 };
 
-// Mirrors seed/events-catalog.json — kept as a client-side constant so the
-// demo stays responsive and credentials-free. Swap-out path: a /api/events
-// route that proxies to the ohanafy-events MCP server.
-export const eventsCatalog: EventTemplate[] = [
+/**
+ * Seed event catalog. Used in two situations:
+ *   - dev / CI when no Salesforce org is wired (FixtureDataSource serves it)
+ *   - SalesforceDataSource fallback when `Plan_Event_Template__c` is empty or
+ *     the SOQL call fails — keeps the demo working in degraded mode
+ *
+ * Customers populate their own events in `Plan_Event_Template__c`; those rows
+ * supersede this seed once SF_AUTH_URL is set and the org has at least one row.
+ * Mirrors `seed/events-catalog.json` and the MCP `ohanafy-events` server's seed.
+ */
+export const seedEventCatalog: EventTemplate[] = [
   {
     id: "iron-bowl-2026",
     label: "Iron Bowl weekend (Auburn vs Alabama)",
@@ -88,6 +96,52 @@ export const eventsCatalog: EventTemplate[] = [
   },
 ];
 
-export function findEvent(id: string): EventTemplate | undefined {
-  return eventsCatalog.find((e) => e.id === id);
+/**
+ * Look up one event template by id. Caller passes the catalog they already
+ * fetched (from `getEventsCatalog()` or a server-side load). The catalog is
+ * a function arg, not a module-level const, so a bug that drops the SF read
+ * cannot silently fall back to seed data inside this helper.
+ */
+export function findEvent(
+  catalog: EventTemplate[],
+  id: string,
+): EventTemplate | undefined {
+  return catalog.find((e) => e.id === id);
+}
+
+// Module-level cache of the active catalog. Mirrors the MCP server's
+// `catalog.ts` and Track A's baseline cache: same Claude turn often
+// fetches + searches + suggests, so a process-level cache prevents
+// redundant SOQL round-trips across handler invocations.
+const CACHE_TTL_MS = 5 * 60 * 1000;
+let cached: { at: number; rows: EventTemplate[] } | null = null;
+let inflight: Promise<EventTemplate[]> | null = null;
+
+/**
+ * Returns the active event-template catalog, fetched once per cache window
+ * from the configured DataSource (Salesforce in production, FixtureDataSource
+ * in dev/CI). Safe to call from any async server-side path; the in-flight
+ * promise is shared so concurrent callers don't stampede the SOQL endpoint.
+ */
+export async function getEventsCatalog(): Promise<EventTemplate[]> {
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.rows;
+  if (inflight) return inflight;
+  inflight = getDataSource()
+    .getEventTemplates()
+    .then((rows) => {
+      cached = { at: Date.now(), rows };
+      inflight = null;
+      return rows;
+    })
+    .catch((err) => {
+      inflight = null;
+      throw err;
+    });
+  return inflight;
+}
+
+/** Test-only: clear the cache and optionally pre-seed it. */
+export function _setEventsCatalogForTesting(rows: EventTemplate[] | null): void {
+  cached = rows ? { at: Date.now(), rows } : null;
+  inflight = null;
 }

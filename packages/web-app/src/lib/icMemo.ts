@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ForecastMonth } from "@/data/baseline";
-import { findEvent } from "@/lib/eventsCatalog";
+import { findEvent, type EventTemplate } from "@/lib/eventsCatalog";
 import type { ThreeStatement } from "@/lib/threeStatement";
 
 /*
@@ -33,6 +33,10 @@ export type IcMemoInput = {
   baseline: ForecastMonth[];
   scenario: ForecastMonth[];
   threeStatement: ThreeStatement;
+  /** Active event-template catalog. Required so we can hydrate the
+   * applied event ids into labels / sources / deltas without reaching
+   * back to the seed const. */
+  catalog: EventTemplate[];
 };
 
 export type IcMemoResponse = {
@@ -71,7 +75,7 @@ export function buildIcMemoUserPrompt(input: IcMemoInput): string {
   const scenarioGmPct = s.revenue ? (s.gm / s.revenue) * 100 : 0;
 
   const events = input.appliedEventIds
-    .map((id) => findEvent(id))
+    .map((id) => findEvent(input.catalog, id))
     .filter((e): e is NonNullable<typeof e> => Boolean(e));
 
   const eventLines = events.length
@@ -119,7 +123,7 @@ export function respondCannedIcMemo(input: IcMemoInput): IcMemoResponse {
   const scenarioGmPct = s.revenue ? (s.gm / s.revenue) * 100 : 0;
   const dGmPctPts = scenarioGmPct - baselineGmPct;
   const events = input.appliedEventIds
-    .map((id) => findEvent(id))
+    .map((id) => findEvent(input.catalog, id))
     .filter((e): e is NonNullable<typeof e> => Boolean(e))
     .slice()
     .sort((a, c) => Math.abs(c.revenueDeltaPct ?? 0) - Math.abs(a.revenueDeltaPct ?? 0));
