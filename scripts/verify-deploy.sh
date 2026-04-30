@@ -26,11 +26,14 @@ set -uo pipefail
 
 : "${BASE_URL:=}"
 : "${SF_ORG_ALIAS:=ohanafy-hack-sandbox}"
+: "${SF_NAMESPACE:=ohfy__}"   # set to "" for unmanaged dev orgs
 : "${CUSTOMER_ID:=yellowhammer}"
 : "${DD_API_KEY:=}"
 : "${DD_APP_KEY:=}"
 : "${DD_SITE:=datadoghq.com}"
 : "${EXPECTED_BRANCH:=master}"
+
+NS="$SF_NAMESPACE"
 
 # Required tools — fail fast if any is missing.
 for cmd in curl jq git; do
@@ -126,7 +129,7 @@ fi
 sf_type_status() {
   local type="$1"
   local out
-  out="$(sf data query -o "$SF_ORG_ALIAS" -q "SELECT COUNT() FROM ${type}" --json 2>&1 || true)"
+  out="$(sf data query -o "$SF_ORG_ALIAS" -q "SELECT COUNT() FROM ${NS}${type}" --json 2>&1 || true)"
   if jq -e '.result.totalSize >= 0' >/dev/null 2>&1 <<<"$out"; then
     echo "ok"
   elif jq -e '.name == "INVALID_TYPE"' >/dev/null 2>&1 <<<"$out"; then
@@ -164,9 +167,9 @@ else
       pass "core custom objects (Ohanafy_Copilot_Config__mdt, Plan_Conversation__c) are present"
 
       # Customer_Id__c — the P0-#3 bind is a no-op until this is set.
-      QRY="SELECT Customer_Id__c FROM Ohanafy_Copilot_Config__mdt WHERE DeveloperName = 'Default'"
+      QRY="SELECT ${NS}Customer_Id__c FROM ${NS}Ohanafy_Copilot_Config__mdt WHERE DeveloperName = 'Default'"
       OUT="$(sf data query -o "$SF_ORG_ALIAS" -q "$QRY" --json 2>/dev/null || echo "")"
-      BOUND_ID="$(jq -r '.result.records[0].Customer_Id__c // ""' <<<"$OUT" 2>/dev/null)"
+      BOUND_ID="$(jq -r --arg k "${NS}Customer_Id__c" '.result.records[0][$k] // ""' <<<"$OUT" 2>/dev/null)"
       if [[ -n "$BOUND_ID" && "$BOUND_ID" != "null" ]]; then
         if [[ "$BOUND_ID" == "$CUSTOMER_ID" ]]; then
           pass "Ohanafy_Copilot_Config__mdt.Default.Customer_Id__c = '${BOUND_ID}' (matches CUSTOMER_ID)"
@@ -181,10 +184,10 @@ else
     if [[ "$RETENTION_STATUS" == "missing" ]]; then
       fail "Plan_Retention_Config__mdt is not in the org — re-deploy force-app/"
     elif [[ "$RETENTION_STATUS" == "ok" ]]; then
-      QRY="SELECT Days_To_Keep__c, Enabled__c FROM Plan_Retention_Config__mdt WHERE DeveloperName = 'Default'"
+      QRY="SELECT ${NS}Days_To_Keep__c, ${NS}Enabled__c FROM ${NS}Plan_Retention_Config__mdt WHERE DeveloperName = 'Default'"
       OUT="$(sf data query -o "$SF_ORG_ALIAS" -q "$QRY" --json 2>/dev/null || echo "")"
-      DAYS="$(jq -r '.result.records[0].Days_To_Keep__c // ""' <<<"$OUT" 2>/dev/null)"
-      ENABLED="$(jq -r '.result.records[0].Enabled__c // ""' <<<"$OUT" 2>/dev/null)"
+      DAYS="$(jq -r --arg k "${NS}Days_To_Keep__c" '.result.records[0][$k] // ""' <<<"$OUT" 2>/dev/null)"
+      ENABLED="$(jq -r --arg k "${NS}Enabled__c" '.result.records[0][$k] // ""' <<<"$OUT" 2>/dev/null)"
       if [[ -n "$DAYS" && "$DAYS" != "null" ]]; then
         pass "Plan_Retention_Config__mdt.Default (Days_To_Keep=${DAYS}, Enabled=${ENABLED})"
       else

@@ -5,7 +5,6 @@
     <externalId>false</externalId>
     <label>Content</label>
     <length>131072</length>
-    <required>true</required>
     <type>LongTextArea</type>
     <visibleLines>6</visibleLines>
 </CustomField>

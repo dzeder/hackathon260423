@@ -55,10 +55,10 @@ private class OhfyPlanMemoryStore_Test {
     @isTest
     static void appendTurn_persists_and_titles_first_user() {
         // Create
-        Map<String, Object> create_ = invokeMap(new Map<String, Object>{
+        Map<String, Object> created = invokeMap(new Map<String, Object>{
             'action' => 'startNewThread', 'customerId' => CUSTOMER, 'userId' => USER_A
         });
-        String convId = (String) dataOf(create_).get('conversationId');
+        String convId = (String) dataOf(created).get('conversationId');
 
         // Append a 4-message turn
         List<Map<String, Object>> entries = new List<Map<String, Object>>{
@@ -80,15 +80,15 @@ private class OhfyPlanMemoryStore_Test {
             }
         };
         Test.startTest();
-        Map<String, Object> append_ = invokeMap(new Map<String, Object>{
+        Map<String, Object> appended = invokeMap(new Map<String, Object>{
             'action' => 'appendTurn',
             'customerId' => CUSTOMER,
             'conversationId' => convId,
             'entries' => entries
         });
         Test.stopTest();
-        Assert.areEqual(true, append_.get('ok'));
-        Assert.areEqual(4, ((Decimal) dataOf(append_).get('inserted')).intValue());
+        Assert.areEqual(true, appended.get('ok'));
+        Assert.areEqual(4, ((Decimal) dataOf(appended).get('inserted')).intValue());
 
         // Title set from first user turn
         Plan_Conversation__c conv = [SELECT Title__c FROM Plan_Conversation__c WHERE Id = :convId];
@@ -172,10 +172,10 @@ private class OhfyPlanMemoryStore_Test {
 
     @isTest
     static void appendTurn_rejects_wrong_customer() {
-        Map<String, Object> create_ = invokeMap(new Map<String, Object>{
+        Map<String, Object> created = invokeMap(new Map<String, Object>{
             'action' => 'startNewThread', 'customerId' => 'cust-A', 'userId' => USER_A
         });
-        String convId = (String) dataOf(create_).get('conversationId');
+        String convId = (String) dataOf(created).get('conversationId');
 
         Map<String, Object> env = invokeMap(new Map<String, Object>{
             'action' => 'appendTurn',
