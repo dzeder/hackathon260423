@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "npm run -w @ohanafy-plan/web-app build",
+  "installCommand": "npm install",
+  "outputDirectory": "packages/web-app/.next"
+}
