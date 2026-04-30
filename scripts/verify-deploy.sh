@@ -284,9 +284,17 @@ if [[ -z "$BASE_URL" ]]; then
   warn "BASE_URL not set; skipping probe"
 else
   WRONG_ID="probe-not-${CUSTOMER_ID}"
-  PROBE_OUT="$(curl -fsS --max-time 15 \
+  AUTH_HEADER=()
+  if [[ -n "${COPILOT_CLIENT_SECRET:-}" ]]; then
+    AUTH_HEADER=(-H "X-Ohanafy-Client-Secret: ${COPILOT_CLIENT_SECRET}")
+  fi
+  # Use -sS (not -fsS) so non-2xx responses are kept and we can assert on
+  # the body. /api/copilot is auth-gated; without COPILOT_CLIENT_SECRET in
+  # env the probe will hit a 401 and report it cleanly instead of failing.
+  PROBE_OUT="$(curl -sS --max-time 15 \
     -H "Content-Type: application/json" \
     -H "x-customer-id: ${WRONG_ID}" \
+    "${AUTH_HEADER[@]}" \
     -X POST "${BASE_URL}/api/copilot" \
     -d '{"prompt":"verify-deploy probe","scenarioId":"probe","appliedEventIds":[]}' \
     -w "\nHTTP_STATUS:%{http_code}" 2>/dev/null || echo "HTTP_STATUS:000")"

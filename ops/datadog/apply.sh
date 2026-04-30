@@ -76,11 +76,15 @@ dd_curl() {
 }
 
 # Render one of our JSON files with envsubst, validating that the output is
-# still valid JSON (catches missing required env, malformed templates, etc.)
+# still valid JSON (catches missing required env, malformed templates, etc.).
+# We pass an explicit allow-list to envsubst so Datadog template variables
+# like $env (resolved at dashboard view time, not deploy time) survive.
+ENVSUBST_VARS='${CUSTOMER_ID} ${CUSTOMER_ID_HASH} ${CUSTOMER_LABEL} ${VERCEL_URL} ${HEALTH_CHECK_ID}'
+
 render_template() {
   local path="$1"
   local out
-  out="$(envsubst < "$path")"
+  out="$(envsubst "$ENVSUBST_VARS" < "$path")"
   if ! printf '%s' "$out" | jq empty >/dev/null 2>&1; then
     echo "error: rendered $path is not valid JSON" >&2
     printf '%s\n' "$out" | head -c 800 >&2
