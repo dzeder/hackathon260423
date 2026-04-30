@@ -167,11 +167,27 @@ jobs:
           # is the source of truth for what should be in the org; if a human
           # made an out-of-band change they wanted to keep, they should have
           # retrieved + committed it before opening the PR.
+          # --verbose: full-force-app deploys against this org occasionally
+          # return a generic UNKNOWN_EXCEPTION at the platform's "Preparing"
+          # stage with zero detail in the default output. Verbose surfaces
+          # the per-component error rows so we can fix the underlying issue.
+          set +e
           sf project deploy start \
             --source-dir force-app \
             --target-org ohanafy-hack-sandbox \
             --test-level RunLocalTests \
-            --ignore-conflicts
+            --ignore-conflicts \
+            --verbose
+          DEPLOY_EXIT=$?
+          if [ "$DEPLOY_EXIT" -ne 0 ]; then
+            echo "::group::Deploy failed — fetching detailed error report"
+            sf project deploy report \
+              --target-org ohanafy-hack-sandbox \
+              --use-most-recent \
+              --verbose || true
+            echo "::endgroup::"
+            exit "$DEPLOY_EXIT"
+          fi
       - name: Apex tests skipped — note for log
         if: steps.should_run.outputs.skip == 'true'
         run: echo "::notice::Apex tests skipped — see step log for reason."
