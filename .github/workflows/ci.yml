@@ -161,10 +161,17 @@ jobs:
       - name: Deploy + run Apex tests (RunLocalTests, 75% coverage bar)
         if: steps.should_run.outputs.skip == 'false'
         run: |
+          # --ignore-conflicts: source tracking against this scratch / sandbox
+          # routinely shows divergence (admin tweaks in Setup, prior CI runs)
+          # that source-only tracking can't reconcile. The branch's force-app/
+          # is the source of truth for what should be in the org; if a human
+          # made an out-of-band change they wanted to keep, they should have
+          # retrieved + committed it before opening the PR.
           sf project deploy start \
             --source-dir force-app \
             --target-org ohanafy-hack-sandbox \
-            --test-level RunLocalTests
+            --test-level RunLocalTests \
+            --ignore-conflicts
       - name: Apex tests skipped — note for log
         if: steps.should_run.outputs.skip == 'true'
         run: echo "::notice::Apex tests skipped — see step log for reason."
