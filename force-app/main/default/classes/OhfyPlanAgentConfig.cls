@@ -12,7 +12,7 @@
  * turning off. Keeps the deploy story simple — new tools don't need a
  * matching CMDT row to ship.
  */
-public with sharing class OhfyPlanAgentConfig {
+global with sharing class OhfyPlanAgentConfig {
 
     @TestVisible
     private static Map<String, Plan_Agent_Config__mdt> cache;
@@ -41,8 +41,8 @@ public with sharing class OhfyPlanAgentConfig {
     private static Plan_Agent_Config__mdt resolve(String toolName, String customerId) {
         loadIfNeeded();
         if (String.isNotBlank(customerId)) {
-            Plan_Agent_Config__mdt override = cache.get(keyFor(toolName, customerId));
-            if (override != null) return override;
+            Plan_Agent_Config__mdt customerOverride = cache.get(keyFor(toolName, customerId));
+            if (customerOverride != null) return customerOverride;
         }
         return cache.get(keyFor(toolName, null));
     }
@@ -58,7 +58,7 @@ public with sharing class OhfyPlanAgentConfig {
     }
 
     /** Snapshot all effective defaults (Customer_Id__c = null rows) for the web-app to cache. */
-    public static List<ConfigRow> listDefaults() {
+    global static List<ConfigRow> listDefaults() {
         loadIfNeeded();
         List<ConfigRow> rows = new List<ConfigRow>();
         for (Plan_Agent_Config__mdt c : cache.values()) {
@@ -69,11 +69,11 @@ public with sharing class OhfyPlanAgentConfig {
         return rows;
     }
 
-    public class ConfigRow {
-        public String toolName;
-        public Boolean enabled;
-        public Decimal rateLimitPerHour;
-        public ConfigRow(Plan_Agent_Config__mdt c) {
+    global class ConfigRow {
+        global String toolName;
+        global Boolean enabled;
+        global Decimal rateLimitPerHour;
+        global ConfigRow(Plan_Agent_Config__mdt c) {
             this.toolName = c.Tool_API_Name__c;
             this.enabled = c.Is_Enabled__c;
             this.rateLimitPerHour = c.Rate_Limit_Per_Hour__c;

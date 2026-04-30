@@ -257,12 +257,12 @@ global with sharing class OhfyPlanMemoryStore {
         insert rows;
 
         // Touch the conversation (Last_Activity_At + first-time title).
-        Plan_Conversation__c update_ = new Plan_Conversation__c(Id = body.conversationId);
-        update_.Last_Activity_At__c = Datetime.now();
+        Plan_Conversation__c convUpdate = new Plan_Conversation__c(Id = body.conversationId);
+        convUpdate.Last_Activity_At__c = Datetime.now();
         if (String.isNotBlank(firstUserText) && String.isBlank(conv[0].Title__c)) {
-            update_.Title__c = trimTo(firstUserText, 80);
+            convUpdate.Title__c = trimTo(firstUserText, 80);
         }
-        update update_;
+        update convUpdate;
 
         return new Map<String, Object>{ 'inserted' => rows.size() };
     }
