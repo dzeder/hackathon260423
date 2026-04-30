@@ -183,6 +183,12 @@ jobs:
             echo "::endgroup::"
           }
 
+          # Stage 0: deploy DeploymentSettings with doesSkipAsyncApexValidation=true.
+          # Without this, redeploying any Apex class fails with
+          # "This schedulable class has jobs pending or in progress" because
+          # OhfyPlanRetentionJob is scheduled in the org. The setting itself
+          # has no Apex job dependency, so it deploys fine first.
+          deploy_chunk "deployment settings (allow deploys w/ pending Apex jobs)" force-app/main/default/settings
           deploy_chunk "objects" force-app/main/default/objects
           deploy_chunk "classes" force-app/main/default/classes
 
