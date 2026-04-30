@@ -103,7 +103,12 @@ export async function callApexRest<T = unknown>(
   }
   const token = await getAccessToken();
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  const url = `${token.instanceUrl}/services/apexrest${cleanPath}`;
+  // Namespaced orgs mount Apex REST classes under /services/apexrest/<ns>/...
+  // so the same code path works against unmanaged dev orgs (SF_APEX_REST_NS unset)
+  // and managed-package orgs (e.g. SF_APEX_REST_NS=ohfy).
+  const ns = process.env.SF_APEX_REST_NS?.trim();
+  const nsPrefix = ns ? `/${ns}` : "";
+  const url = `${token.instanceUrl}/services/apexrest${nsPrefix}${cleanPath}`;
   let resp = await fetch(url, {
     method: "POST",
     headers: {
@@ -210,7 +215,9 @@ export async function querySoql(
   const token = await getAccessToken();
   // Call the custom Apex REST endpoint rather than /services/data/.../query
   // so the SF side enforces `with sharing` + the allowlist independently.
-  const url = `${token.instanceUrl}/services/apexrest/plan/soql?maxRows=${maxRows}`;
+  const ns = process.env.SF_APEX_REST_NS?.trim();
+  const nsPrefix = ns ? `/${ns}` : "";
+  const url = `${token.instanceUrl}/services/apexrest${nsPrefix}/plan/soql?maxRows=${maxRows}`;
   const resp = await fetch(url, {
     method: "POST",
     headers: {
