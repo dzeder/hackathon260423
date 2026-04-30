@@ -167,24 +167,31 @@ jobs:
           # is the source of truth for what should be in the org; if a human
           # made an out-of-band change they wanted to keep, they should have
           # retrieved + committed it before opening the PR.
-          # --verbose: full-force-app deploys against this org occasionally
-          # return a generic UNKNOWN_EXCEPTION at the platform's "Preparing"
-          # stage with zero detail in the default output. Verbose surfaces
-          # the per-component error rows so we can fix the underlying issue.
+          # The deploy regularly fails fast with 0/78 components and a generic
+          # "Status: Failed" — the platform's UNKNOWN_EXCEPTION path. The
+          # actionable detail (ErrorId, errorMessage, per-component problem)
+          # only surfaces via `deploy report --json`, so on failure we re-run
+          # the report and dump errorMessage + componentFailures.
           set +e
           sf project deploy start \
             --source-dir force-app \
             --target-org ohanafy-hack-sandbox \
             --test-level RunLocalTests \
-            --ignore-conflicts \
-            --verbose
+            --ignore-conflicts
           DEPLOY_EXIT=$?
           if [ "$DEPLOY_EXIT" -ne 0 ]; then
-            echo "::group::Deploy failed — fetching detailed error report"
-            sf project deploy report \
+            echo "::group::Deploy failed — JSON report"
+            REPORT="$(sf project deploy report \
               --target-org ohanafy-hack-sandbox \
-              --use-most-recent \
-              --verbose || true
+              --use-most-recent --json 2>/dev/null || true)"
+            # Top-level error message (the UNKNOWN_EXCEPTION ErrorId lives here)
+            echo "--- result.response.errorMessage ---"
+            echo "$REPORT" | jq -r '.result.response.errorMessage // .result.errorMessage // "(none)"'
+            echo "--- result.response.errorStatusCode ---"
+            echo "$REPORT" | jq -r '.result.response.errorStatusCode // "(none)"'
+            # Per-component failures (rare on UNKNOWN_EXCEPTION, common on real bugs)
+            echo "--- result.details.componentFailures (first 20) ---"
+            echo "$REPORT" | jq -r '.result.details.componentFailures[0:20] // .result.response.details.componentFailures[0:20] // [] | .[] | "\(.componentType) \(.fullName): \(.problem) (\(.lineNumber // "?"):\(.columnNumber // "?"))"'
             echo "::endgroup::"
             exit "$DEPLOY_EXIT"
           fi
