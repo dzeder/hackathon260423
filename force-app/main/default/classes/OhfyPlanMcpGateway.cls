@@ -34,7 +34,11 @@ public with sharing class OhfyPlanMcpGateway {
 
     private static final String NAMED_CREDENTIAL = 'callout:Ohanafy_Plan_Gateway';
     private static final String SECRET_HEADER = 'X-Ohanafy-Client-Secret';
-    private static final Integer TIMEOUT_MS = 20000;
+    // Salesforce max for HTTP callouts is 120000ms. A live copilot turn
+    // can run 15-45s end-to-end (Anthropic + multiple Apex REST round-trips
+    // for memory persistence + tool dispatch); 20s was tripping every
+    // non-trivial multi-tool query.
+    private static final Integer TIMEOUT_MS = 120000;
 
     @TestVisible
     private static String resolveClientSecret() {
