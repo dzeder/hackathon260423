@@ -72,7 +72,13 @@ global with sharing class OhfyPlanRetentionJob
 
     @TestVisible
     private static Integer getDaysToKeep() {
-        if (daysOverride != null) return daysOverride;
+        // The < 1 guard applies to BOTH the test override and the
+        // metadata-derived value — a 0 or negative passed via the
+        // override must round up to the safe default just like a
+        // misconfigured Custom Metadata record would.
+        if (daysOverride != null) {
+            return daysOverride < 1 ? DEFAULT_DAYS : daysOverride;
+        }
         Plan_Retention_Config__mdt cfg = Plan_Retention_Config__mdt.getInstance('Default');
         if (cfg == null || cfg.Days_To_Keep__c == null) return DEFAULT_DAYS;
         Integer d = Integer.valueOf(cfg.Days_To_Keep__c);
