@@ -6,6 +6,17 @@ private class OhfyPlanMemoryStore_Test {
     private static final String USER_B = '005000000000002';
 
     private static String invoke(Map<String, Object> body) {
+        // In production, the bind check reads Customer_Id__c off custom
+        // metadata — which is org-id in our sandbox, not the synthetic
+        // 'cust-test' / 'cust-A' / 'cust-B' the rest of these tests use.
+        // Without this default, every test that doesn't explicitly set
+        // the override hits a 403 and the downstream assertions NPE on
+        // the (intentionally) empty `data` envelope. Tests that DO test
+        // bind enforcement set the override before calling invoke(), so
+        // this only kicks in when the test isn't about bind at all.
+        if (OhfyPlanMemoryStore.boundCustomerIdOverride == null) {
+            OhfyPlanMemoryStore.boundCustomerIdOverride = '';
+        }
         RestRequest req = new RestRequest();
         req.requestURI = '/services/apexrest/plan/memory';
         req.httpMethod = 'POST';
